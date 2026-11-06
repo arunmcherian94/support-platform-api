@@ -115,3 +115,21 @@ The PR plan in CLAUDE.md §11 is renumbered to match.
 - The warehouse returns reals as `String(value)` (`"385"`, not `"385.000"`); the adapter parses them as numbers.
 
 **Open questions.** None.
+
+## 2026-11-06 20:30 IST — Sample-data assumptions
+
+**What was done.** A sweep of the scenario's sample data for traps beyond the casing and ID quirks. Recorded in DECISIONS.md:
+- the question asks for customers, not cases;
+- the sample case has no change marker;
+- contract end vs renewal, and several contracts per account;
+- usage lag;
+- status and priority vocabularies inferred from one sample;
+- the missing XML timestamp;
+- canonical-only IDs, with alias and name lookup deferred.
+
+**What changed and why.**
+- Duplicate account rows in the CSV: the row with the latest `contract_end` wins, and the duplicate is logged (ADR-0003 §4). An older, expired Gold row for ACC-012 proves it: picking the wrong row drops CS-10236 from the answer, and the oracle test catches it. A full contract model (highest active tier, summed ARR) was considered and judged more than the sample data justifies.
+- The usage seed now covers August–October, the last three closed months at the fixture date. The scenario's September sample row is kept.
+- The oracle test also asserts the customer-level answer.
+
+**Open questions.** None.

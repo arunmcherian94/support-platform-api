@@ -5,6 +5,9 @@
  * production or mock code is imported. It proves the fixtures encode the
  * approved answer in S1 §4. The read path must later return the same set
  * through the API.
+ *
+ * If an account appears more than once in the CSV, the row with the latest
+ * contract_end wins (ADR-0003 §4).
  */
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
@@ -46,7 +49,11 @@ function effectiveEntitlements(): Map<string, Entitlement> {
   const result = new Map<string, Entitlement>();
   for (const row of csvRows(fixture('entitlement/accounts.csv'))) {
     const id = crosswalk.get(row.account_id ?? '') ?? row.account_id ?? '';
-    result.set(id, { tier: row.support_tier ?? '', renewal: row.contract_end ?? '' });
+    const end = row.contract_end ?? '';
+    const current = result.get(id);
+    if (current === undefined || end > current.renewal) {
+      result.set(id, { tier: row.support_tier ?? '', renewal: end });
+    }
   }
   // The XML feed (generatedAt 11:00Z) is newer than the CSV export (02:00Z),
   // so it wins for tier and renewal (ADR-0003).
@@ -85,6 +92,12 @@ describe('ground truth for the sample question (S1 §4)', () => {
       .sort();
 
     expect(answer).toEqual(['CS-10231', 'CS-10233', 'CS-10236', 'CS-10239', 'CS-10240']);
+
+    // The question asks which customers, so the answer is per account.
+    const customers = [
+      ...new Set(cases.filter((c) => answer.includes(c.id)).map((c) => c.accountId)),
+    ].sort();
+    expect(customers).toEqual(['ACC-007', 'ACC-012', 'ACC-030', 'ACC-042']);
   });
 
   it('keeps the quirks the design depends on', () => {
