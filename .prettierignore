@@ -3,3 +3,4 @@ coverage/
 data/
 package-lock.json
 *.md
+.claude/worktrees/
