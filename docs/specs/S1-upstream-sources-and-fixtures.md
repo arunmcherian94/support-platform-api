@@ -45,7 +45,7 @@ The platform must be built and tested against three upstream systems we don't ha
 | Account | Name | CSV (tier, contract_end) | XML (tier, renewal) | Effective tier / renewal | Days to renewal |
 |---|---|---|---|---|---|
 | ACC-007 (CSV: `ACC-77`) | Acme Corp | Platinum, 2027-01-15 | Platinum, 2027-01-15 | Platinum / 2027-01-15 | 70 |
-| ACC-012 | Borealis Health | Platinum, 2027-02-03 (plus an **expired** Gold contract ending 2026-06-30) | — | Platinum / 2027-02-03 | 89 |
+| ACC-012 | Borealis Health | Platinum, 2027-02-03 (plus an **older** Gold row ending 2026-06-30) | — | Platinum / 2027-02-03 | 89 |
 | ACC-015 | Cobalt Logistics | Platinum, 2027-02-05 | — | Platinum / 2027-02-05 | 91 |
 | ACC-021 | Driftwood Bank | Gold, 2026-12-20 | — | Gold / 2026-12-20 | 44 |
 | ACC-030 | Ember Retail | Platinum, 2027-06-30 | Platinum, **2027-01-31** (newer) | Platinum / 2027-01-31 (XML) | 86 |
@@ -77,7 +77,7 @@ The platform must be built and tested against three upstream systems we don't ha
 | Uses the wrong renewal window | CS-10236 / CS-10237 |
 | Ignores precedence | CS-10239 / CS-10240 |
 | Skips the crosswalk | CS-10231 / CS-10233 |
-| Counts expired contracts (tier, renewal or ARR) | CS-10236 (renewal becomes 2026-06-30, in the past) |
+| Picks the wrong row for a duplicated account | CS-10236 (renewal becomes 2026-06-30, in the past) |
 | Treats `in_progress` as not open | CS-10233 |
 | Fails to filter tier, priority or closed status | CS-10238, CS-10234, CS-10235 |
 

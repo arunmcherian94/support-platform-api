@@ -128,7 +128,7 @@ The PR plan in CLAUDE.md §11 is renumbered to match.
 - canonical-only IDs, with alias and name lookup deferred.
 
 **What changed and why.**
-- Each CSV row is now a contract (ADR-0003 §4). Tier, renewal and ARR are derived from active contracts. An expired Gold contract for ACC-012 proves that expired rows are ignored; counting them drops CS-10236 from the answer, and the oracle test catches it.
+- Duplicate account rows in the CSV: the row with the latest `contract_end` wins, and the duplicate is logged (ADR-0003 §4). An older, expired Gold row for ACC-012 proves it: picking the wrong row drops CS-10236 from the answer, and the oracle test catches it. A full contract model (highest active tier, summed ARR) was considered and judged more than the sample data justifies.
 - The usage seed now covers August–October, the last three closed months at the fixture date. The scenario's September sample row is kept.
 - The oracle test also asserts the customer-level answer.
 

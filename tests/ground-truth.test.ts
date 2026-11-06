@@ -6,9 +6,8 @@
  * approved answer in S1 §4. The read path must later return the same set
  * through the API.
  *
- * Each CSV row is a contract (ADR-0003): an account's tier is the highest
- * tier among its active contracts, renewal is the earliest active contract
- * end, and expired contracts (end before today) are ignored.
+ * If an account appears more than once in the CSV, the row with the latest
+ * contract_end wins (ADR-0003 §4).
  */
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
@@ -47,21 +46,14 @@ function effectiveEntitlements(): Map<string, Entitlement> {
   const crosswalk = new Map(
     csvRows(fixture('entitlement/id-crosswalk.csv')).map((r) => [r.source_id, r.canonical_id]),
   );
-  const rank = ['Silver', 'Gold', 'Platinum'];
   const result = new Map<string, Entitlement>();
   for (const row of csvRows(fixture('entitlement/accounts.csv'))) {
     const id = crosswalk.get(row.account_id ?? '') ?? row.account_id ?? '';
-    const tier = row.support_tier ?? '';
     const end = row.contract_end ?? '';
-    if (Date.parse(`${end}T00:00:00Z`) < today) continue; // expired contract
     const current = result.get(id);
-    result.set(id, {
-      tier:
-        current === undefined || rank.indexOf(tier) > rank.indexOf(current.tier)
-          ? tier
-          : current.tier,
-      renewal: current === undefined || end < current.renewal ? end : current.renewal,
-    });
+    if (current === undefined || end > current.renewal) {
+      result.set(id, { tier: row.support_tier ?? '', renewal: end });
+    }
   }
   // The XML feed (generatedAt 11:00Z) is newer than the CSV export (02:00Z),
   // so it wins for tier and renewal (ADR-0003).
