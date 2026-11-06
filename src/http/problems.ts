@@ -94,13 +94,24 @@ function sendProblem(req: Request, res: Response, error: AppError): void {
     ...error.options.extensions,
   };
   res.set(error.options.headers ?? {});
-  res.status(definition.status).type('application/problem+json').json(body);
+  // send(), not json(): res.json is hooked by response validation, and a problem
+  // whose status an operation doesn't declare must still reach the client as a
+  // problem, never as the framework's HTML error page.
+  res.status(definition.status).type('application/problem+json').send(JSON.stringify(body));
+}
+
+/** Errors from the body parser and similar middleware (http-errors shape). */
+function clientErrorStatus(error: unknown): number | undefined {
+  if (typeof error !== 'object' || error === null) return undefined;
+  const status = (error as { status?: unknown }).status;
+  return typeof status === 'number' && status >= 400 && status < 500 ? status : undefined;
 }
 
 /** Maps every error to an RFC 9457 problem (S2-3). Unknown errors never leak details. */
 export function errorHandler(logger: Logger) {
   return (error: unknown, req: Request, res: Response, next: NextFunction): void => {
     if (res.headersSent) {
+      logger.error({ err: error }, 'error after the response started');
       next(error);
       return;
     }
@@ -131,6 +142,14 @@ export function errorHandler(logger: Logger) {
     }
     if (isValidatorError(error) && error.status === 415) {
       sendProblem(req, res, new AppError('validation-failed', 'Unsupported content type.'));
+      return;
+    }
+    const clientStatus = clientErrorStatus(error);
+    if (clientStatus !== undefined) {
+      // Malformed JSON, an oversized body (413 isn't in the contract, so 400), and similar.
+      const detail =
+        clientStatus === 413 ? 'The request body is too large.' : 'The request body is malformed.';
+      sendProblem(req, res, new AppError('validation-failed', detail));
       return;
     }
     // Includes response-contract violations in strict mode: logged, never echoed.
