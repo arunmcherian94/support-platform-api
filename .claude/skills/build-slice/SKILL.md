@@ -30,6 +30,22 @@ Fill in this table for each slice and show it before starting:
 | Standard | Handlers, adapters, mocks, repositories, ordinary tests | `sonnet` |
 | Mechanical | Config, boilerplate, Postman scaffolding, fixture files written from an already-approved ground-truth table | `haiku` |
 
+**Work the table doesn't list.** The examples above aren't a complete list, so classify by what a defect would cause:
+1. **Critical** if a defect could:
+   - expose data the caller shouldn't see;
+   - let an action through that should be refused;
+   - repeat or lose a write;
+   - break the contract silently.
+2. **Mechanical** if the output is fully determined by an approved input (a table, a schema, a template) and a test or linter would catch any deviation.
+3. **Standard** otherwise.
+
+Tie-breakers:
+- **Unsure between two tiers:** take the higher one.
+- **A slice that mixes tiers:** split it, or run it at its highest tier.
+- **Record the reason:** write it in the slice table ("Model" column, e.g. `opus — touches scope check`), so the human can challenge it at plan approval.
+
+The human can promote any slice; nothing is demoted once a slice has started.
+
 Critical-tier code is always read line by line by the human afterwards, whichever model wrote it.
 
 ## 3. Dispatch
