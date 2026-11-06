@@ -16,5 +16,5 @@
     "resolveJsonModule": true,
     "noEmit": true
   },
-  "include": ["src", "tests", "mcp", "mocks", "*.ts"]
+  "include": ["src", "tests", "mcp", "mocks", "scripts", "*.ts"]
 }

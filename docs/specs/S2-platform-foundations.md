@@ -59,7 +59,7 @@ Building this once, before any endpoint, means each later PR adds behaviour, not
    - `node:sqlite` in WAL mode, file path from config (`:memory:` in tests);
    - a migration runner (ordered SQL files, a `schema_migrations` table, applied at start-up, in a transaction);
    - a repository layer.
-   - **Tables arrive with the PR that first uses them** (idempotency with comments; audit and deliveries with webhooks and escalate). This PR ships the runner with a trivial first migration.
+   - **The first migration ships the store's real schema:** `idempotency_keys`, `audit_log` (append-only, enforced by triggers), `webhook_subscriptions` and `webhook_deliveries`, with their indexes. The data-model rationale is in DECISIONS.md. The brief requires a justified schema with indexes, and designing the tables now keeps that requirement met however far later PRs get. Each table's repository arrives with the PR that first uses it; `pending_actions` arrives with Part C. Later changes are new migrations. *(Changed during planning: the spec first said a trivial migration.)*
 8. **Config:** env parsed and validated at start-up; a bad value stops the process with a clear message. `.env.example` lists every variable.
 9. **Run:**
    - `make run` starts the mocks and the API locally;
@@ -94,7 +94,7 @@ Building this once, before any endpoint, means each later PR adds behaviour, not
 - Skip the `aud` check, or accept `alg: none`.
 - Ignore the operation's scopes.
 - Key the rate limiter globally instead of per client.
-- Return a response field the contract doesn't allow.
+- Return a value the contract doesn't allow (e.g. a status outside its enum). *Extra, undeclared fields currently pass: response schemas don't set `unevaluatedProperties: false`. Tightening that is a contract change, recorded as a follow-up.*
 - Log the `Authorization` header, or log request bodies.
 - Mount the dev issuer regardless of `DEV_ISSUER`.
 

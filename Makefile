@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help install typecheck lint test check mocks
+.PHONY: help install typecheck lint test check mocks run api
 
 # Fixture clock (S1 §4). Override with NOW=... on the command line.
 NOW ?= 2026-11-06T12:00:00Z
@@ -23,3 +23,9 @@ check: typecheck lint test ## Everything CI runs
 
 mocks: ## Mock upstreams on :8081 (faults: MOCK_FAULTS='{"warehouse":{"down":true}}')
 	NOW=$(NOW) npx tsx mocks/server.ts
+
+run: ## Mocks + API on :8081/:8080 at the fixture clock
+	npx tsx scripts/run.ts
+
+api: ## API only (expects mocks on :8081)
+	NOW=$(NOW) DEV_ISSUER=true npx tsx src/server.ts
