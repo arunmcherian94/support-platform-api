@@ -7,25 +7,35 @@ export type { Logger };
 const SECRET_FIELDS = [
   'authorization',
   'cookie',
+  'set-cookie',
+  'x-api-key',
+  'api_key',
   'client_secret',
+  'client_assertion',
   'assertion',
   'password',
   'secret',
   'token',
   'access_token',
+  'refresh_token',
+  'id_token',
 ];
+const SECRET_KEY = new RegExp(`^(${SECRET_FIELDS.join('|')})$`, 'i');
 
-/** Redaction paths for secret fields at the top level and up to three levels deep. */
-const REDACT_PATHS = SECRET_FIELDS.flatMap((field) => [
+/** pino redaction paths: a first line of defence; `maskPersonalData` covers any depth and case. */
+const REDACT_PATHS = SECRET_FIELDS.filter((field) => /^[a-z_]+$/.test(field)).flatMap((field) => [
   field,
   `*.${field}`,
   `*.*.${field}`,
-  `*.*.*.${field}`,
 ]);
 
+/** Fields the platform sets itself: identifiers, never personal data, never masked. */
+const OWN_FIELDS = new Set(['correlationId', 'traceparent', 'route', 'method', 'service']);
+
 const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
-// Candidate phone numbers; `maskPhone` decides. Dates and plain numbers are left alone.
-const PHONE_CANDIDATE = /\+?\(?\d[\d\s().-]{7,}\d/g;
+// Candidate phone numbers, not embedded in a longer token (UUIDs, hex IDs, trace IDs):
+// no word character or hyphen directly before or after. `maskPhone` decides.
+const PHONE_CANDIDATE = /(?<![\w-])\+?\(?\d[\d\s().-]{7,}\d(?![\w-])/g;
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}/;
 
 function maskPhone(match: string): string {
@@ -35,25 +45,34 @@ function maskPhone(match: string): string {
   return match.startsWith('+') || /[\s().-]/.test(match) ? '[phone]' : match;
 }
 
+function maskText(value: string): string {
+  return value.replace(EMAIL, '[email]').replace(PHONE_CANDIDATE, maskPhone);
+}
+
 /**
- * Backstop masking for personal data in free text that reaches the logger.
- * Best-effort only: the primary rule is that bodies are never logged (S2 §2.3).
+ * Backstop for anything that reaches the logger: secret-named keys are redacted
+ * at any depth and in any case, and emails and phone numbers are masked in free
+ * text. Best-effort only: the primary rule is that bodies are never logged (S2 §2.3).
  */
 export function maskPersonalData(value: unknown, depth = 0): unknown {
-  if (typeof value === 'string') {
-    return value.replace(EMAIL, '[email]').replace(PHONE_CANDIDATE, maskPhone);
-  }
-  if (depth > 5 || value === null || typeof value !== 'object') return value;
+  if (typeof value === 'string') return maskText(value);
+  if (depth > 8 || value === null || typeof value !== 'object') return value;
   if (Array.isArray(value)) return value.map((item) => maskPersonalData(item, depth + 1));
+  if (value instanceof Date) return value.toISOString();
   if (value instanceof Error) {
     return {
       type: value.name,
-      message: maskPersonalData(value.message, depth + 1),
-      stack: value.stack,
+      message: maskText(value.message),
+      stack: value.stack === undefined ? undefined : maskText(value.stack),
+      ...(value.cause === undefined ? {} : { cause: maskPersonalData(value.cause, depth + 1) }),
     };
   }
   return Object.fromEntries(
-    Object.entries(value).map(([key, item]) => [key, maskPersonalData(item, depth + 1)]),
+    Object.entries(value).map(([key, item]) => {
+      if (SECRET_KEY.test(key)) return [key, '[redacted]'];
+      if (depth === 0 && OWN_FIELDS.has(key)) return [key, item];
+      return [key, maskPersonalData(item, depth + 1)];
+    }),
   );
 }
 
@@ -64,6 +83,8 @@ export function createLogger(level: string, destination?: DestinationStream): Lo
       base: { service: 'support-platform-api' },
       timestamp: pino.stdTimeFunctions.isoTime,
       redact: { paths: REDACT_PATHS, censor: '[redacted]' },
+      // Errors are serialised by maskPersonalData (masked message, stack and cause).
+      serializers: { err: (error: unknown) => error },
       // Every line carries the request's correlation ID when there is one (S2-4).
       mixin: () => {
         const context = currentContext();
