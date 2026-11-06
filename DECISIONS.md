@@ -17,6 +17,16 @@ Key trade-offs, assumptions and what was skipped, recorded at the time each deci
 | 9 | Account IDs: canonical `ACC-NNN` plus an explicit crosswalk; unmatched IDs reported; no name matching | `ACC-77` vs `ACC-007` is a real mismatch that padding can't fix; a wrong join is worse than a reported gap | ADR-0003 |
 | 10 | iPaaS consumes the API and (in production) runs bulk export ingestion; custom code owns rules, auth, guardrails, MCP | Each tool where it is strong | [ADR-0004](docs/adr/ADR-0004-ipaas-placement.md) |
 | 11 | Entitlement required, usage optional in the customer aggregate | No customer without entitlement; usage loss → `degraded: true` | ADR-0002 |
+| 12 | Errors: RFC 9457 with `type` as the identifier; no `code` or `retryable` extensions; 400 for request validation | Standard first: `type` and `Retry-After` already carry what those fields would | [ADR-0005](docs/adr/ADR-0005-api-contract-conventions.md) |
+| 13 | Versioning: `/v1` in the path; additive changes only; `Deprecation` + `Sunset` headers; 6 months' overlap | Most common scheme; simplest for gateways and iPaaS connectors | ADR-0005 |
+| 14 | ARR omitted (not nulled) without `finance:read` | "Hidden" must not read as "zero" | ADR-0005 |
+| 15 | `Idempotency-Key` on comments only, 24h | Duplicate comments are a real side effect; escalate's state rule and `If-Match` already block repeats | ADR-0005 |
+| 16 | Strong `ETag` from an adapter-supplied concurrency token; `If-Match` required on escalate only | The gap between reading and acting (stretched by human approval) is where stale decisions happen | ADR-0005 |
+| 17 | Keyset cursors, opaque and unsigned, bound to filters and sort | Authorization is re-applied per request, so signing adds a secret without adding safety | ADR-0005 |
+| 18 | Escalation is a sub-object, not a status; eligibility matrix by priority and tier; synchronous 200 | Escalated cases are still open or in progress; the upstream write is synchronous | ADR-0005 |
+| 19 | `case.escalated`: Standard Webhooks; small payload (IDs, routing fields, actor; no ARR or free text); retries over about 23h, then dead-letter | Receivers fetch the rest with their own scopes | ADR-0005 |
+| 20 | Comments on closed cases: no platform rule | The case system owns that rule | ADR-0005 |
+| 21 | `GET /v1/cases/{caseId}` added | The way to get the `ETag` that escalate needs | ADR-0005 |
 
 ## Data quirks and how they're handled
 - **Mixed casing in case JSON** (`Status`, `Comments` vs `openedAt`): normalised to canonical camelCase in the case adapter; upstream shapes never leave the adapter.
@@ -26,6 +36,8 @@ Key trade-offs, assumptions and what was skipped, recorded at the time each deci
 
 ## Assumptions
 - Interpretation of the sample question (open statuses, strict 48h, inclusive 90-day window): [S1 §4](docs/specs/S1-upstream-sources-and-fixtures.md).
+- Support tiers are `platinum`, `gold` and `silver`; the scenario names only Platinum.
+- Export cadence: nightly CSV, hourly XML (ADR-0003).
 
 ## Skipped, and how I'd do it with more time
 _Filled in as items are deferred; the final list mirrors the traceability matrix._
