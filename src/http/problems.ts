@@ -135,6 +135,25 @@ export function errorHandler(logger: Logger) {
       );
       return;
     }
+    if (isValidatorError(error) && (error.status === 401 || error.status === 403)) {
+      // The validator rebuilds security-handler errors; the handler leaves the
+      // real problem (type, WWW-Authenticate) on res.locals.
+      const stashed = (res.locals as { authProblem?: unknown }).authProblem;
+      sendProblem(
+        req,
+        res,
+        stashed instanceof AppError
+          ? stashed
+          : error.status === 401
+            ? new AppError('unauthorized', 'A valid bearer token is required.', {
+                headers: { 'WWW-Authenticate': 'Bearer' },
+              })
+            : new AppError('insufficient-scope', 'The token lacks a required scope.', {
+                headers: { 'WWW-Authenticate': 'Bearer error="insufficient_scope"' },
+              }),
+      );
+      return;
+    }
     if (isValidatorError(error) && (error.status === 404 || error.status === 405)) {
       // Routes and methods outside the contract.
       sendProblem(req, res, new AppError('not-found', 'No such resource or method.'));
