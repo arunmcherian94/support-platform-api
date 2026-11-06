@@ -1,0 +1,91 @@
+# API governance for openapi.yaml. Recommended OpenAPI rules plus our own
+# conventions (ADR-0005). CI fails on any warning.
+extends:
+  - [spectral:oas, recommended]
+
+rules:
+  versioned-paths:
+    description: API paths start with a major version (/v1/...); only the health probes are unversioned.
+    message: '{{property}} must start with /v<major>/ (ADR-0005, versioning).'
+    severity: error
+    given: $.paths[*]~
+    then:
+      function: pattern
+      functionOptions:
+        match: '^(/v[0-9]+/|/healthz$|/readyz$)'
+
+  lowercase-paths:
+    description: Path segments are lowercase; parameters are camelCase.
+    severity: error
+    given: $.paths[*]~
+    then:
+      function: pattern
+      functionOptions:
+        match: '^(/([a-z0-9-]+|\{[a-z][a-zA-Z0-9]*\}))+$'
+
+  operation-id-camel-case:
+    description: operationId is camelCase.
+    severity: error
+    given: $..[?(@.operationId)].operationId
+    then:
+      function: casing
+      functionOptions:
+        type: camel
+
+  properties-camel-case:
+    description: Schema property names are camelCase.
+    severity: error
+    given: $.components.schemas..properties[*]~
+    then:
+      function: casing
+      functionOptions:
+        type: camel
+
+  errors-use-problem-json:
+    description: Every 4xx/5xx response is application/problem+json (RFC 9457).
+    severity: error
+    given: $.paths[?(@property.match(/^\/v[0-9]+\//))][*].responses[?(@property.match(/^[45][0-9][0-9]$/))]
+    then:
+      field: content.application/problem+json
+      function: truthy
+
+  errors-are-shared-components:
+    description: Error responses reference a shared component; no inline error shapes.
+    severity: error
+    resolved: false
+    given: $.paths[?(@property.match(/^\/v[0-9]+\//))][*].responses[?(@property.match(/^[45][0-9][0-9]$/))]
+    then:
+      field: $ref
+      function: truthy
+
+  authenticated-operations-declare-auth-errors:
+    description: Versioned operations declare 401, 403 and 429.
+    severity: error
+    given: $.paths[?(@property.match(/^\/v[0-9]+\//))][get,put,post,patch,delete].responses
+    then:
+      - field: '401'
+        function: truthy
+      - field: '403'
+        function: truthy
+      - field: '429'
+        function: truthy
+
+  success-responses-carry-rate-limit-headers:
+    description: Successful versioned responses carry RateLimit-Policy, RateLimit and X-Request-Id.
+    severity: error
+    given: $.paths[?(@property.match(/^\/v[0-9]+\//))][get,put,post,patch,delete].responses[?(@property.match(/^2[0-9][0-9]$/))].headers
+    then:
+      - field: RateLimit-Policy
+        function: truthy
+      - field: RateLimit
+        function: truthy
+      - field: X-Request-Id
+        function: truthy
+
+  operations-declare-scopes:
+    description: Versioned operations declare the OAuth scope they need.
+    severity: error
+    given: $.paths[?(@property.match(/^\/v[0-9]+\//))][get,put,post,patch,delete]
+    then:
+      field: security
+      function: truthy

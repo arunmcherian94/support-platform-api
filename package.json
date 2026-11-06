@@ -9,12 +9,14 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "lint": "eslint . && prettier --check .",
+    "lint": "eslint . && prettier --check . && npm run lint:api",
     "format": "prettier --write .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "lint:api": "spectral lint openapi.yaml --fail-severity=hint"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
+    "@stoplight/spectral-cli": "6.17.0",
     "@types/node": "26.6.6",
     "eslint": "10.14.0",
     "prettier": "3.9.10",

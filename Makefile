@@ -10,7 +10,7 @@ install: ## Install pinned dependencies from the lockfile
 typecheck: ## TypeScript strict typecheck
 	npm run typecheck
 
-lint: ## ESLint + Prettier (Spectral joins with the contract)
+lint: ## ESLint, Prettier and Spectral (API contract)
 	npm run lint
 
 test: ## Unit and integration tests
