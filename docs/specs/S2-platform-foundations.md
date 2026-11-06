@@ -2,7 +2,7 @@
 
 - **Status:** Draft. Merging this spec PR approves it (critical tier, CLAUDE.md §11), together with the Gate 3a decisions in DECISIONS.md.
 - **Decisions:** ADR-0001 (stack), ADR-0005 (contract conventions).
-- **Traceability:** B2, B6, B9, A7, A9 (verification part), A10 (rate-limit part), C9 (per-agent limits).
+- **Traceability:** B2, B6, B9, A7, A9 (verification part), A10 (rate-limit part), C8 (PII redaction, logging part), C9 (per-agent limits).
 
 ## 1. Problem
 Every endpoint needs the same base:
@@ -30,7 +30,12 @@ Building this once, before any endpoint, means each later PR adds behaviour, not
    - W3C `traceparent` is parsed, or generated if absent;
    - both are kept in `AsyncLocalStorage`, so every log line carries `correlationId` without passing it around;
    - `X-Request-Id` is echoed on every response;
-   - **no secrets in logs:** the `Authorization` header and token values are redacted.
+   - **No secrets or personal data in logs.** The rule is structural first:
+     - **Bodies are never logged.** Request and response bodies (comments, ARR, credentials) don't reach the logger. Log lines carry metadata only: method, route template, status, latency, correlation ID, client ID and user `sub`.
+     - **Named fields are redacted:** `Authorization` and `Cookie` headers, `client_secret`, `assertion`, and any `password`, `secret` or `token` field.
+     - **Errors carry no input values.** `errors[].detail` says what was wrong, not what was sent. Upstream failures are logged as status and error code, never the upstream body.
+     - **Backstop:** a log serializer masks email addresses and phone numbers in any string that reaches the logger. It is best-effort, behind the structural rule.
+     - **User IDs (`sub`) are kept,** for accountability. The audit log (later PRs) is the authoritative record, with its own retention and redacted arguments.
 4. **Dev token issuer** (dev-only, clearly labelled):
    - an RS256 key pair generated at start-up;
    - `GET /dev/.well-known/jwks.json`;
@@ -73,7 +78,8 @@ Building this once, before any endpoint, means each later PR adds behaviour, not
 | S2-1 | `make run` and `docker compose up` start the API (:8080) and mocks (:8081) from a clean clone; `/healthz` returns 200 and `/readyz` returns 200 with the database `ok`. |
 | S2-2 | A request that violates `openapi.yaml` gets 400 `validation-failed` with `errors[]` pointers. A handler response that violates the contract fails the test suite (it surfaces as a 500 and is logged). |
 | S2-3 | Every non-2xx is `application/problem+json` with `type`, `title`, `status` and `correlationId`. Unknown errors never leak a message or stack. |
-| S2-4 | Every log line is JSON with `correlationId`. A valid inbound `X-Request-Id` is echoed; an invalid one is replaced. `Authorization` never appears in logs. |
+| S2-4 | Every log line is JSON with `correlationId`. A valid inbound `X-Request-Id` is echoed; an invalid one is replaced. |
+| S2-11 | Logs never contain request or response bodies, credentials or personal data. With requests carrying the fixture email and phone, an ARR value, a client secret and a bearer token, the captured logs contain none of them. |
 | S2-5 | Tokens from the dev issuer verify through its JWKS URL. Wrong `iss`, wrong `aud`, expired, not-yet-valid, `alg: none`, HS256, a bad signature, or a missing token all give 401 with `WWW-Authenticate`. |
 | S2-6 | An operation's required scope comes from its `security` entry in `openapi.yaml`; a token without it gets 403 `insufficient-scope` naming the scope. |
 | S2-7 | Rate limits are per client and per agent. The 101st request in a window gets 429 with `Retry-After`. Another client is unaffected. Headers are on every authenticated response. Advancing the test clock refills the bucket. |
@@ -86,7 +92,7 @@ Building this once, before any endpoint, means each later PR adds behaviour, not
 - Ignore the operation's scopes.
 - Key the rate limiter globally instead of per client.
 - Return a response field the contract doesn't allow.
-- Log the `Authorization` header.
+- Log the `Authorization` header, or log request bodies.
 
 ## 5. Decisions taken in this spec
 - **Response validation:** strict (a violation becomes a 500, and tests fail) in dev, test and CI. Production would run it in log-only mode behind a flag (`RESPONSE_VALIDATION=strict|log`), so contract drift is caught in logs and alerts instead of becoming an outage. The trade-off: drift reaches clients until it is fixed.
