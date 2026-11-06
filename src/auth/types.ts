@@ -28,4 +28,6 @@ export type SecurityHandler = (
 export interface AuthLocals {
   identity?: Identity;
   authProblem?: AppError;
+  /** Why a token was rejected; logged, never sent to the client. */
+  authFailure?: string;
 }

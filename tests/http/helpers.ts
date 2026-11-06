@@ -5,6 +5,7 @@ import { fixedClock } from '../../src/clock.js';
 import { loadConfig, type Config } from '../../src/config.js';
 import { createApp, type OperationHandlers } from '../../src/http/app.js';
 import { createLogger, type Logger } from '../../src/observability/logger.js';
+import type { RunningServer } from '../../src/server.js';
 import { openDatabase } from '../../src/store/db.js';
 
 export const FIXTURE_NOW = '2026-11-06T12:00:00Z';
@@ -87,3 +88,39 @@ export const VALID_CASE = {
   comments: [],
   commentCount: 0,
 };
+
+/** A free TCP port. The issuer URL embeds the port, so it must be known before start-up. */
+export async function freePort(): Promise<number> {
+  const { createServer } = await import('node:net');
+  return new Promise((resolve, reject) => {
+    const probe = createServer();
+    probe.once('error', reject);
+    probe.listen(0, () => {
+      const { port } = probe.address() as AddressInfo;
+      probe.close(() => {
+        resolve(port);
+      });
+    });
+  });
+}
+
+/** Starts the real server with the dev issuer, plus a bearer header with every scope. */
+export async function startServerWithAuth(
+  logger: Logger,
+  options: { handlers?: OperationHandlers; env?: Record<string, string> } = {},
+): Promise<{ running: RunningServer; auth: { authorization: string } }> {
+  const { startServer } = await import('../../src/server.js');
+  const port = String(await freePort());
+  const running = await startServer(
+    testConfig({ PORT: port, DEV_ISSUER: 'true', ...options.env }),
+    logger,
+    options.handlers === undefined ? {} : { handlers: options.handlers },
+  );
+  if (running.issuer === undefined) throw new Error('dev issuer not mounted');
+  const token = await running.issuer.mint({
+    sub: 'jdoe',
+    clientId: 'support-console',
+    scopes: ['customers:read', 'cases:read', 'cases:comment', 'cases:escalate'],
+  });
+  return { running, auth: { authorization: `Bearer ${token}` } };
+}

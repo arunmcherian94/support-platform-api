@@ -10,7 +10,7 @@
 import type { Response } from 'express';
 import { AppError } from '../http/problems.js';
 import type { AuthLocals, SecurityHandler } from './types.js';
-import { IssuerUnavailableError, type Verifier } from './verify.js';
+import { InvalidTokenError, IssuerUnavailableError, type Verifier } from './verify.js';
 
 // RFC 6750 §2.1: b64token after one or more spaces; the scheme is case-insensitive.
 const BEARER = /^Bearer +([A-Za-z0-9\-._~+/]+=*)$/i;
@@ -51,6 +51,11 @@ export function createSecurityHandler(verifier: Verifier): SecurityHandler {
     try {
       identity = await verifier.verify(token);
     } catch (error) {
+      // Logged with the request (security monitoring), never sent to the client.
+      (res.locals as AuthLocals).authFailure =
+        error instanceof InvalidTokenError || error instanceof IssuerUnavailableError
+          ? error.reason
+          : 'unexpected';
       if (error instanceof IssuerUnavailableError) {
         fail(
           res,

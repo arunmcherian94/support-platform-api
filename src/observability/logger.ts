@@ -133,6 +133,7 @@ export function requestLogMiddleware(logger: Logger) {
           clientId: identity.clientId,
           sub: identity.sub,
           agent: identity.agent,
+          authFailure: (res.locals as { authFailure?: string }).authFailure,
         },
         'request completed',
       );

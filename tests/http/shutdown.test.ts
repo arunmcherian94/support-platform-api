@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { startServer } from '../../src/server.js';
-import { captureLogs, testConfig, VALID_CASE } from './helpers.js';
+import { captureLogs, startServerWithAuth, testConfig, VALID_CASE } from './helpers.js';
 
 describe('graceful shutdown (S2-10)', () => {
   it('drains an in-flight request, closes the database, then refuses connections', async () => {
@@ -13,7 +13,7 @@ describe('graceful shutdown (S2-10)', () => {
       entered = resolve;
     });
     const logs = captureLogs();
-    const running = await startServer(testConfig({ PORT: '0' }), logs.logger, {
+    const { running, auth } = await startServerWithAuth(logs.logger, {
       handlers: {
         getCase: async (_req, res) => {
           entered();
@@ -23,7 +23,7 @@ describe('graceful shutdown (S2-10)', () => {
       },
     });
 
-    const inFlight = fetch(`${running.url}/v1/cases/CS-10231`);
+    const inFlight = fetch(`${running.url}/v1/cases/CS-10231`, { headers: auth });
     await reached;
     const stopped = running.shutdown();
     release();

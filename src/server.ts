@@ -3,9 +3,18 @@ import type { Server } from 'node:http';
 import { dirname } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
+import {
+  createDevIssuer,
+  devIssuerEnabled,
+  loadDevClients,
+  type DevIssuer,
+} from './auth/dev-issuer.js';
+import { createSecurityHandler } from './auth/security-handler.js';
+import { createVerifier } from './auth/verify.js';
 import { systemClock } from './clock.js';
 import { ConfigError, loadConfig, type Config } from './config.js';
 import { createApp, type OperationHandlers } from './http/app.js';
+import { createRateLimiter } from './http/rate-limit.js';
 import { createLogger, type Logger } from './observability/logger.js';
 import { openDatabase } from './store/db.js';
 import { migrate } from './store/migrate.js';
@@ -14,6 +23,8 @@ export interface RunningServer {
   server: Server;
   url: string;
   db: DatabaseSync;
+  /** The dev token issuer, when DEV_ISSUER=true (tests use it to mint tokens). */
+  issuer?: DevIssuer;
   /**
    * Reports not-ready, waits `config.shutdownReadinessDelayMs` so load balancers
    * stop routing here, then stops accepting connections, drains in-flight
@@ -33,13 +44,29 @@ export async function startServer(
   const applied = migrate(db);
   if (applied.length > 0) logger.info({ migrations: applied }, 'migrations applied');
 
+  const clock = systemClock();
+  // Dev-only issuer, mounted only on request; config refuses it in production (S2-12).
+  const issuer = devIssuerEnabled(config)
+    ? await createDevIssuer({ config, clock, clients: loadDevClients() })
+    : undefined;
+
   let draining = false;
   const app = createApp({
     config,
     isDraining: () => draining,
-    clock: systemClock(),
+    clock,
     logger,
     db,
+    ...(issuer === undefined ? {} : { preValidation: [issuer.router] }),
+    // Verified against the issuer's JWKS URL, as a production resource server would.
+    securityHandler: createSecurityHandler(createVerifier({ config, clock })),
+    afterAuth: [
+      createRateLimiter({
+        clock,
+        clientPerMinute: config.rateLimit.clientPerMinute,
+        agentPerMinute: config.rateLimit.agentPerMinute,
+      }),
+    ],
     ...(options.handlers === undefined ? {} : { handlers: options.handlers }),
   });
   const server = await new Promise<Server>((resolve, reject) => {
@@ -84,7 +111,13 @@ export async function startServer(
     })();
     return closing;
   };
-  return { server, url: `http://127.0.0.1:${port}`, db, shutdown };
+  return {
+    server,
+    url: `http://127.0.0.1:${port}`,
+    db,
+    ...(issuer === undefined ? {} : { issuer }),
+    shutdown,
+  };
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
