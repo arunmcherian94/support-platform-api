@@ -79,3 +79,18 @@ The PR plan in CLAUDE.md §11 is renumbered to match.
 **Open questions (for Part A).**
 - How "no usage data" vs "warehouse down" appear in the customer response.
 - Whether escalation is a status or a flag.
+
+## 2026-11-06 18:30 IST — Phase 2: Gate 2a decided, contract written
+
+**What was done.**
+- The human owner decided every Gate 2a item; recorded in ADR-0005 and DECISIONS.md rows 12–21. The S1 ground truth is approved.
+- `openapi.yaml` (OAS 3.1) covers the five required items plus `GET /v1/cases/{caseId}` and the health probes. Every decision on the Part A checklist is visible in the spec: the API description, components, headers and per-operation text.
+- `.spectral.yaml` extends the recommended OAS ruleset with eight convention rules. Each custom rule was checked by breaking the spec on purpose and confirming the rule fires. `npm run lint` now includes Spectral, so CI runs it.
+
+**What changed and why.**
+- The first proposals added `code` and `retryable` to problems and signed (HMAC) cursors. The human asked for standard practice instead. `type` and `Retry-After` already carry that information, and with authorization re-applied per request, signing a cursor adds a secret without adding safety. Both were dropped.
+- Idempotency keys are required on comments only. Escalate's state rule and `If-Match` already prevent a repeat.
+- Pinned `@stoplight/spectral-cli` 6.17.0, not 6.17.1, which was published hours earlier. A short cool-down on fresh releases is a cheap supply-chain control.
+- `npm audit` reports 10 moderate findings (minimatch, via typescript-eslint; dev tooling only). They exist on `main` too; Spectral adds none. They'll clear when typescript-eslint updates its dependency.
+
+**Open questions.** Gate 4a: should the API itself require a verifiable approval reference when an agent token escalates (defence in depth behind the MCP approval gate)?
