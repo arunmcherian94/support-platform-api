@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<entitlements generatedAt="2026-11-06T11:00:00Z">
+  <account id="ACC-007">
+    <tier>Platinum</tier>
+    <renewal>2027-01-15</renewal>
+  </account>
+  <account id="ACC-030">
+    <tier>Platinum</tier>
+    <renewal>2027-01-31</renewal>
+  </account>
+  <account id="ACC-042">
+    <tier>Platinum</tier>
+    <renewal>2027-01-10</renewal>
+  </account>
+</entitlements>
