@@ -35,6 +35,7 @@ Key trade-offs, assumptions and what was skipped, recorded at the time each deci
 | 27 | Gate 3a: contract tests = response validation in every test, plus a local Schemathesis run | Schemathesis generates inputs nobody hand-picked; it needs the running stack, so it stays out of CI | — |
 | 28 | Gate 3a: Postman collection generated from the spec, then functional and regression checks added; Newman run | Starts complete, then gains the checks that matter | — |
 | 29 | Gate 3a: pino JSON logs, correlation ID plus `traceparent` | Required correlation, ready for tracing later | S2 |
+| 31 | Response schemas are closed (`additionalProperties`/`unevaluatedProperties: false`), enforced at runtime and by a Spectral rule | An undeclared field such as ARR can't leak past the contract; clients still ignore unknown fields, so additions stay non-breaking | [ADR-0005](docs/adr/ADR-0005-api-contract-conventions.md) |
 | 30 | Critical-tier specs ship in their own PR, merged before code | Approving a design and approving code are different acts; the merge makes the design decision durable and visible | CLAUDE.md §11 |
 
 ## Data quirks and how they're handled

@@ -166,3 +166,12 @@ The store and run slices were built in parallel (sonnet, worktrees with a verifi
 **Open questions.**
 - `docker compose up` is untested: Docker isn't running on this machine.
 - Extra response fields pass validation, because response schemas don't set `unevaluatedProperties: false`. That's a contract follow-up.
+
+## 2026-11-06 23:20 IST — Contract: closed response schemas
+
+**What changed and why.** The PR 4a review showed that undeclared response fields passed validation, because no response schema was closed. That is exactly how ARR could leak onto a case.
+- Every component object schema now sets `additionalProperties: false`.
+- `Case` and `CaseDetail` share `CaseFields` and close it with `unevaluatedProperties: false`.
+- A Spectral rule keeps new schemas closed.
+- A runtime test proves an extra field (ARR on a case, or nested in the account summary) becomes a 500 in strict mode.
+- Clients remain tolerant readers, so additions stay non-breaking.

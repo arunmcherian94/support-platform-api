@@ -40,4 +40,5 @@ Each row: the rule broken on purpose, and the test that failed. Reverted after e
 | Accept any inbound `X-Request-Id` | `tests/http/pipeline.test.ts` (S2-4) | 4a |
 | Send problems through the validation-hooked `res.json` | `tests/http/review-fixes.test.ts` (undeclared status still a problem) | 4a |
 | Revert to the phone pattern that matches inside UUIDs | `tests/http/review-fixes.test.ts` (correlation IDs intact) | 4a |
+| Reopen a response schema (`AccountSummary` without `additionalProperties: false`) | Spectral `object-schemas-closed`, and `tests/http/pipeline.test.ts` (undeclared nested field) | closed schemas |
 | Keep `/readyz` at 200 while shutting down | `tests/http/shutdown.test.ts` (readiness during shutdown) | 4a |
