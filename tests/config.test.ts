@@ -23,6 +23,10 @@ describe('config (S2-9)', () => {
     [{ RESPONSE_VALIDATION: 'maybe' }, /RESPONSE_VALIDATION must be one of strict, log/],
     [{ DEV_ISSUER: 'yes' }, /DEV_ISSUER must be true or false/],
     [{ LOG_LEVEL: 'loud' }, /LOG_LEVEL must be one of/],
+    [{ MOCKS_URL: 'nope' }, /MOCKS_URL must be an http\(s\) URL/],
+    [{ NOW: 'yesterday' }, /NOW must be an RFC 3339 timestamp/],
+    [{ NODE_ENV: 'production' }, /ISSUER_URL is required when NODE_ENV=production/],
+    [{ NODE_ENV: 'production', ISSUER_URL: 'https://idp.example' }, /AUDIENCE is required/],
   ])('rejects %j naming the variable', (env, message) => {
     expect(() => loadConfig(env)).toThrow(message);
   });
@@ -31,6 +35,9 @@ describe('config (S2-9)', () => {
     expect(() => loadConfig({ NODE_ENV: 'production', DEV_ISSUER: 'true' })).toThrow(
       /DEV_ISSUER must not be true when NODE_ENV=production/,
     );
-    expect(loadConfig({ NODE_ENV: 'production' }).devIssuer).toBe(false);
+    expect(
+      loadConfig({ NODE_ENV: 'production', ISSUER_URL: 'https://idp.example', AUDIENCE: 'api' })
+        .devIssuer,
+    ).toBe(false);
   });
 });
