@@ -9,3 +9,6 @@ data/
 .env.*
 !.env.example
 .DS_Store
+
+# Worktrees created for parallel agent slices
+.claude/worktrees/

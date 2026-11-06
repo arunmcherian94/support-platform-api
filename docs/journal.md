@@ -94,3 +94,24 @@ The PR plan in CLAUDE.md §11 is renumbered to match.
 - `npm audit` reports 10 moderate findings (minimatch, via typescript-eslint; dev tooling only). They exist on `main` too; Spectral adds none. They'll clear when typescript-eslint updates its dependency.
 
 **Open questions.** Gate 4a: should the API itself require a verifiable approval reference when an agent token escalates (defence in depth behind the MCP approval gate)?
+
+## 2026-11-06 19:40 IST — Phase 3: fixtures and mock upstreams
+
+**What was done.**
+- Injectable clock, with ESLint banning direct time reads elsewhere (S1-6).
+- Fixtures from the approved ground truth, including three comments seeded for the Part C guardrail tests.
+- An independent oracle test that derives the sample-question answer from the raw fixture files.
+- One mock process with per-upstream fault injection: the case system (Salesforce-style paging, version-checked `PATCH`), the entitlement exports (conditional GETs) and the warehouse (Snowflake-style statements, allow-list only). `make mocks` starts it on :8081 with the fixture clock.
+
+**How it was built.** The base (clock, fixtures, server, faults) was written in session. The three route groups ran as parallel sonnet slices, each owning its own two files, then were reviewed and integrated.
+
+**What changed and why.**
+- Worktrees are cut from the default branch, so the first dispatch started the slices on `main`. The base-commit check in each prompt stopped them before they wrote anything.
+- After a reset instruction, the resumed slices ran in the main checkout instead. File ownership kept them from colliding.
+- Both lessons are now in the build-slice skill.
+
+**Review notes (minor, not fixed).**
+- The entitlement mock compares `If-None-Match` strongly, so a weak `W/` tag won't match. Our adapter never sends one.
+- The warehouse returns reals as `String(value)` (`"385"`, not `"385.000"`); the adapter parses them as numbers.
+
+**Open questions.** None.

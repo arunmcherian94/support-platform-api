@@ -50,6 +50,8 @@ Critical-tier code is always read line by line by the human afterwards, whicheve
 
 ## 3. Dispatch
 - Launch independent slices in one message, each with `isolation: "worktree"`.
+- **Commit everything the slices depend on first.** A worktree is cut from the default branch, not from your feature branch, so each prompt must start with: "run `git reset --hard <feature-branch>`, confirm `git log --oneline -1` shows `<expected commit>`, run `npm ci`; if the commit doesn't match, stop and report." Without that check, a slice builds against the wrong base without noticing.
+- **Resuming a slice loses its worktree.** A resumed agent runs in the main checkout. Either give it an explicit worktree path to `cd` into, or let it commit only its own files on the feature branch, and commit nothing yourself until it reports back.
 - Give each subagent a self-contained prompt:
   - the slice row;
   - the spec path and the AC IDs it covers;
@@ -80,3 +82,9 @@ Launch the `fresh-reviewer` agent with the diff range (`git diff main...HEAD`), 
 
 ## 7. Prepare the PR (step 10)
 Fill `.github/pull_request_template.md`, open it with `gh pr create`, and stop. The human reviews and merges.
+
+## Known gap: no checkpoint or resume
+Slice state lives only in git: each slice commits once, at the end. If a slice crashes mid-way, its worktree keeps the uncommitted files (worktrees with changes are not auto-removed), but nothing records which slices finished. If this becomes a problem:
+- keep a slice ledger (slice, status, worktree path, commit hash) in the session scratchpad, updated at dispatch, completion and integration;
+- have slices make checkpoint commits on their own branch, squashed at integration;
+- on resume, re-dispatch only slices without a commit, pointing each at its existing worktree.
