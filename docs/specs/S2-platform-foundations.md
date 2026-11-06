@@ -94,7 +94,7 @@ Building this once, before any endpoint, means each later PR adds behaviour, not
 - Skip the `aud` check, or accept `alg: none`.
 - Ignore the operation's scopes.
 - Key the rate limiter globally instead of per client.
-- Return a value the contract doesn't allow (e.g. a status outside its enum). *Extra, undeclared fields currently pass: response schemas don't set `unevaluatedProperties: false`. Tightening that is a contract change, recorded as a follow-up.*
+- Return a value or a field the contract doesn't allow (e.g. a status outside its enum, or ARR on a case). *Undeclared fields are rejected since response schemas were closed (ADR-0005).*
 - Log the `Authorization` header, or log request bodies.
 - Mount the dev issuer regardless of `DEV_ISSUER`.
 

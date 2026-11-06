@@ -46,6 +46,7 @@ The guiding rule at this gate was **standard practice first**. We add a field or
 ### Versioning and deprecation
 - Major version in the path (`/v1`), the most widely used scheme and the simplest for gateways and iPaaS connectors.
 - Within a major version, changes are additive only, and clients must ignore unknown fields.
+- **Response schemas are closed** (`additionalProperties: false`; `unevaluatedProperties: false` where schemas are composed). The service can't send a field the contract doesn't declare, because runtime response validation rejects it. That stops an undeclared field (ARR on a case, for instance) leaking past the contract. Clients stay tolerant readers, so adding a field is still non-breaking; it just goes through the contract first. *(Added after the PR 4a review showed extra fields passed validation.)*
 - A breaking change means `/v2`, with at least 6 months of overlap for internal consumers.
 - **Deprecation signals:** `Deprecation` (RFC 9745), `Sunset` (RFC 8594) and `Link: rel="deprecation"`.
 - **CI:** Spectral governs style; breaking-change detection (oasdiff) runs in CI.

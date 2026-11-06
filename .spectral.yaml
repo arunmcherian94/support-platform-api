@@ -89,3 +89,17 @@ rules:
     then:
       field: security
       function: truthy
+
+  object-schemas-closed:
+    description: Component object schemas declare additionalProperties false, so the service can't send undeclared fields (ADR-0005). CaseFields is the shared base that Case and CaseDetail close with unevaluatedProperties.
+    message: '{{property}} must set additionalProperties: false'
+    severity: error
+    given: "$.components.schemas[?(@.type == 'object' && @property != 'CaseFields')]"
+    then:
+      - field: additionalProperties
+        function: defined
+      - field: additionalProperties
+        function: schema
+        functionOptions:
+          schema:
+            const: false

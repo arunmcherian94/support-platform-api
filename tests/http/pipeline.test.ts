@@ -70,6 +70,30 @@ describe('response validation (S2-2)', () => {
     ).toBe(true);
   });
 
+  it('rejects an undeclared field, such as ARR on a case (closed schemas)', async () => {
+    app = await startTestApp({
+      handlers: {
+        getCase: (_req, res) => {
+          res.json({ ...VALID_CASE, arr: { amount: '480000.00', currency: 'USD' } });
+        },
+      },
+    });
+    const res = await fetch(`${app.url}/v1/cases/CS-10231`);
+    expect(res.status).toBe(500);
+    expect(await res.text()).not.toContain('480000');
+  });
+
+  it('rejects an undeclared field nested in an account summary', async () => {
+    app = await startTestApp({
+      handlers: {
+        getCase: (_req, res) => {
+          res.json({ ...VALID_CASE, account: { ...VALID_CASE.account, arr: 480000 } });
+        },
+      },
+    });
+    expect((await fetch(`${app.url}/v1/cases/CS-10231`)).status).toBe(500);
+  });
+
   it('passes a valid response through', async () => {
     app = await startTestApp({
       handlers: {
