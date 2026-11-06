@@ -38,7 +38,22 @@ Key trade-offs, assumptions and what was skipped, recorded at the time each deci
 ## Assumptions
 - Interpretation of the sample question (open statuses, strict 48h, inclusive 90-day window): [S1 §4](docs/specs/S1-upstream-sources-and-fixtures.md).
 - Support tiers are `platinum`, `gold` and `silver`; the scenario names only Platinum.
+- **Status and priority vocabularies** are inferred from one sample, which shows only `open` and `P1`. We assume `open`, `in_progress` and `closed`, and `P1`–`P4`.
+- **Case change marker.** The sample case has no `version` or `updatedAt`. The mock adds a `version`, which becomes the ETag. For a provider without one, the adapter would hash the case's canonical fields. It would not use the latest comment's `at`: that changes only when a comment is added, so a priority change or a closure would keep the same ETag, exactly the changes `If-Match` exists to catch.
+- **Contracts.** Each CSV row is a contract. Tier, renewal and ARR are derived from active contracts only (ADR-0003 §4). The fixtures include an expired contract for ACC-012 to prove expired rows are ignored.
+- **Contract end stands in for renewal.** Notice periods aren't modelled; an explicit XML `renewal` takes precedence when newer.
+- **XML timestamp.** The sample XML fragment has no root element or timestamp; the fixture adds `<entitlements generatedAt=…>`. A feed without one would fall back to the HTTP `Last-Modified` date or the fetch time.
+- **Usage lags by up to a month.** Months are reported once closed, so at the fixture date (6 Nov) the latest month is October. Responses carry `latestMonth`, and consumers should present it as "as of October", not as current.
+- **The sample question asks for customers.** The answer is four accounts (ACC-007, ACC-012, ACC-030, ACC-042), each with its qualifying cases, not a list of five case IDs.
+- **Account IDs in the API are canonical only** (`ACC-NNN`). ERP IDs such as `ACC-77` are resolved internally and never exposed. Passing one gets a 400 (see Skipped for the lookup we'd add).
 - Export cadence: nightly CSV, hourly XML (ADR-0003).
 
 ## Skipped, and how I'd do it with more time
 _Filled in as items are deferred; the final list mirrors the traceability matrix._
+
+- **Looking up customers by the IDs and names users know.** Users more often know the ERP's ID (`ACC-77`), or the customer's name, than our canonical ID. Today the API accepts only canonical IDs. With more time:
+  - accept known aliases on `GET /v1/customers/{id}`, resolved through the crosswalk, and return the canonical `id` in the response;
+  - add `GET /v1/customers?q=` returning ranked candidates (exact alias, name prefix, fuzzy name), each with its match type, for the user or agent to confirm.
+
+  Fuzzy matching is only ever for **search**, never for **joins** between systems: a wrong join silently attaches one customer's tier and ARR to another (ADR-0003).
+- **Comment paging.** `GET /v1/cases/{caseId}` returns the newest 50 comments plus `commentCount`. A `GET /v1/cases/{caseId}/comments?cursor=` sub-collection is an additive change when a consumer needs older comments.

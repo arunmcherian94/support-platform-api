@@ -45,11 +45,26 @@ Agents must know how old data is before acting on it, and Finance needs ARR from
 - **Explicit crosswalk** (`mocks/fixtures/entitlement/id-crosswalk.csv`, `source_id → canonical_id`) for known aliases that formatting can't reconcile, e.g. `ACC-77 → ACC-007`. This stands in for a master-data-management mapping. The crosswalk is applied before format normalisation.
 - **Unmatched IDs are reported, never dropped or guessed.** Records whose ID matches nothing in the other systems are logged as data-quality events, counted in a metric, and listed in the `/readyz` detail. We never match on account name.
 
+**4. Contracts, not accounts, are the unit in the export.**
+The scenario describes the ERP as holding "accounts, contracts", but the sample CSV has one row per account. We treat **each CSV row as a contract**, so an account may have several. The account's entitlement is derived from its **active** contracts (end date today or later):
+
+| Field | Derivation |
+|---|---|
+| Support tier | The highest tier among active contracts (platinum > gold > silver) |
+| Renewal date | The earliest end date among active contracts: the next renewal event |
+| ARR | The sum of active contracts' ARR |
+
+- Expired contracts never count toward tier, renewal or ARR.
+- An account with no active contract has no entitlement and is reported as unmatched.
+- A contract's end date stands in for its renewal date. Notice periods aren't modelled. When the XML feed gives an explicit `renewal`, precedence (section 2) applies on top of the derived value.
+- The API keeps exposing the derived fields (`supportTier`, `renewalDate`, `arr`), not a contract list. A `contracts[]` sub-resource is an additive change if a consumer needs it.
+
 ## Alternatives considered
 - **Fetch per request.** Rejected: an export is a file produced on a schedule, so re-reading it per request adds latency and load and gains no freshness.
 - **Whole-record precedence (XML wins everything it has).** Simpler, but it loses the CSV's authority on ARR, and ARR is what Finance relies on. (The XML doesn't carry ARR, so ARR always comes from the CSV.)
 - **CSV-only renewal** (ignore the fresher XML). Simpler, but agents would answer "renewal in the next 90 days" on stale dates.
 - **Fuzzy match on account name.** It would "fix" the sample, but it silently joins the wrong accounts when names collide or change. For data that drives escalation and ARR visibility, a wrong join is worse than a reported gap.
+- **One row per account** (last or first row wins). That matches the sample, but it silently picks an arbitrary contract when there are several, including expired ones.
 - **Zero-padding only.** Doesn't reconcile `ACC-77` with `ACC-007` (see Context).
 
 ## Consequences
