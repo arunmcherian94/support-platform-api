@@ -57,6 +57,11 @@ function toIdentity(payload: JWTPayload): Identity {
   if (act !== undefined) {
     const actSub = typeof act === 'object' && act !== null && 'sub' in act ? act.sub : undefined;
     if (typeof actSub !== 'string' || actSub === '') throw new InvalidTokenError('act');
+    // Delegation chains (an actor acting for an actor) aren't designed yet; refuse
+    // them rather than record only the outer actor.
+    if (typeof act === 'object' && act !== null && 'act' in act) {
+      throw new InvalidTokenError('act-chain');
+    }
     agent = actSub;
   }
   return {
@@ -75,7 +80,14 @@ export function createVerifier(deps: {
 }): Verifier {
   const { config, clock } = deps;
   const keySet =
-    deps.jwks ?? createRemoteJWKSet(new URL(`${config.issuerUrl}/.well-known/jwks.json`));
+    deps.jwks ??
+    createRemoteJWKSet(new URL(`${config.issuerUrl}/.well-known/jwks.json`), {
+      // Keys are refetched hourly or on an unknown kid (rotation). An identity
+      // provider outage shorter than an hour doesn't stop verification of tokens
+      // signed with known keys; a longer one gives 503 (stale-on-error deferred).
+      cacheMaxAge: 60 * 60 * 1000,
+      timeoutDuration: 2000,
+    });
 
   return {
     async verify(token) {

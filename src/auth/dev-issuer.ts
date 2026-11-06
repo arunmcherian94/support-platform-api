@@ -225,6 +225,8 @@ export async function createDevIssuer(deps: {
         clientId: client.clientId,
         scopes,
       });
+      // The request log then records which client obtained a token (never the secret).
+      res.locals.identity = { clientId: client.clientId, sub: client.sub ?? client.clientId };
       res.status(200).json({
         access_token: accessToken,
         token_type: 'Bearer',
