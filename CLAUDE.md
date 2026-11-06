@@ -485,7 +485,9 @@ Every unit of work goes through these steps in order. The two approvals and the 
 The human can promote any PR to critical. Nothing gets demoted mid-flight.
 
 ### Branch and PR rules
-- One branch per PR, cut from up-to-date `main`. Name: `<part>/<short-scope>`.
+- **Every change goes on a new branch and reaches `main` only through a PR that a human merges.** That covers every feature, fix, doc and config change, however small. Nobody commits or pushes to `main` directly; the one exception was the empty bootstrap commit that created the repository. Fixes to an open PR go on that PR's branch; fixes after a merge get a new branch (`fix/<short-scope>`).
+- **Enforced, not just written down:** a GitHub ruleset on `main` blocks direct pushes and force-pushes and requires a PR with the `ci` check green.
+- One branch per PR, cut from up-to-date `main`. Name: `<part>/<short-scope>` (`fix/…`, `docs/…` and `chore/…` for work outside the part plan).
 - Open PRs with `gh pr create` using the template below. You (Claude Code) never merge, approve or push to `main` directly. The human reviews and merges.
 - **Contract changes only in contract PRs.** If an implementation PR needs a spec change, stop, raise it, and make it a separate small PR first. The spec leads; code follows.
 - Each PR must be green: typecheck, lint, Spectral, tests (and Newman once it exists).
