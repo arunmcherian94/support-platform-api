@@ -42,3 +42,13 @@ Each row: the rule broken on purpose, and the test that failed. Reverted after e
 | Revert to the phone pattern that matches inside UUIDs | `tests/http/review-fixes.test.ts` (correlation IDs intact) | 4a |
 | Reopen a response schema (`AccountSummary` without `additionalProperties: false`) | Spectral `object-schemas-closed`, and `tests/http/pipeline.test.ts` (undeclared nested field) | closed schemas |
 | Keep `/readyz` at 200 while shutting down | `tests/http/shutdown.test.ts` (readiness during shutdown) | 4a |
+| Skip the token `audience` check | `tests/auth/token-verification.test.ts` (wrong audience) | 4b |
+| Drop the RS256 pin, or allow another RSA algorithm | `tests/auth/token-verification.test.ts` (PS256 with an alg-less JWKS key) | 4b |
+| Add `HS256` or `none` to the allowed algorithms | **Not caught by our tests:** jose refuses unsigned tokens and won't use an RSA key for HMAC, so its own defences hold. The pin is still kept. | 4b |
+| Ignore the operation's required scopes | `tests/auth/*` (5 tests: getCustomer, addCaseComment, getCase scopes) | 4b |
+| Compare client secrets with `===` | **Not test-detectable** (timing); constant-time comparison verified by reading | 4b |
+| One global rate-limit bucket | `tests/http/rate-limit.test.ts` (5 tests) | 4b |
+| Drop the per-agent bucket | `tests/http/rate-limit.test.ts` (5 tests) | 4b |
+| Never refill buckets | `tests/http/rate-limit.test.ts` (5 tests) | 4b |
+| Mount the dev issuer regardless of `DEV_ISSUER` | `tests/http/auth-e2e.test.ts` (S2-12) | 4b |
+| Don't wire the security handler | `tests/http/auth-e2e.test.ts` (6 tests) | 4b |

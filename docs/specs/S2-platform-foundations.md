@@ -1,6 +1,6 @@
 # S2 — Platform foundations
 
-- **Status:** Draft. Merging this spec PR approves it (critical tier, CLAUDE.md §11), together with the Gate 3a decisions in DECISIONS.md.
+- **Status:** Implemented (PRs #6 and 4b). Approved by merging #5, with the Gate 3a decisions in DECISIONS.md.
 - **Decisions:** ADR-0001 (stack), ADR-0005 (contract conventions).
 - **Traceability:** B2, B6, B9, A7, A9 (verification part), A10 (rate-limit part), C8 (PII redaction, logging part), C9 (per-agent limits).
 
