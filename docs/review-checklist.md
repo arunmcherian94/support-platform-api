@@ -52,3 +52,6 @@ Each row: the rule broken on purpose, and the test that failed. Reverted after e
 | Never refill buckets | `tests/http/rate-limit.test.ts` (5 tests) | 4b |
 | Mount the dev issuer regardless of `DEV_ISSUER` | `tests/http/auth-e2e.test.ts` (S2-12) | 4b |
 | Don't wire the security handler | `tests/http/auth-e2e.test.ts` (6 tests) | 4b |
+| Charge the rate limit after request validation instead of after verification | `tests/auth/review-fixes.test.ts` (400 and 403 charged) | 4b |
+| Treat only JWKS timeouts as an unavailable identity provider | `tests/auth/review-fixes.test.ts` (500, HTML, non-key-set → 503) | 4b |
+| Require only `sub` (drop `exp`, `iat`, `client_id`) | `tests/auth/review-fixes.test.ts` (no exp refused) | 4b |
