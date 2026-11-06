@@ -14,7 +14,16 @@ All three are mocked locally. The design must:
 - let us switch a provider without rewriting domain code;
 - let us demonstrate timeouts, retries, breakers and degraded mode on demand.
 
-It serves two consumer types: apps and iPaaS flows need stable, versioned shapes; agents need fresh state and must know how old data is.
+It serves two consumer types:
+- **Apps and iPaaS flows** need stable, versioned shapes.
+- **Agents** need more than fresh data. What the integration layer owes them:
+  - fresh case state, and the age (`asOf`) of anything that isn't fresh;
+  - partial results that say so (`degraded`, per-source status), never silently missing data;
+  - upstream free text kept separate from our own fields, so the MCP layer can treat it as untrusted;
+  - errors mapped to stable failure classes (retryable or not, `Retry-After`), so a tool can tell the model what to do next;
+  - writes that are safe to retry (idempotency keys, `version`-based concurrency).
+
+  The agent-facing parts that sit above the API (delegated identity, approval, output caps, redaction) are decided in Part C.
 
 ## Decision
 
@@ -32,7 +41,7 @@ Domain code depends only on ports. Switching to ServiceNow or another ERP means 
 
 | Upstream | Mock interface | Notes |
 |---|---|---|
-| Case system | `GET /cases` (upstream filters: status, priority, opened range), `GET /cases/{id}`, `POST /cases/{id}/comments`, `PATCH /cases/{id}` | Salesforce-style pagination: opaque `nextRecordsUrl`. Each case has a monotonic `version`. Can return 429 with `Retry-After`. |
+| Case system | `GET /cases` (upstream filters: status, priority, opened range), `GET /cases/{id}`, `POST /cases/{id}/comments`, `PATCH /cases/{id}` | `PATCH` only accepts the escalation fields and requires the current `version`. It exists because our escalate endpoint (Part C) writes through to the case system, as a Salesforce record update would. Salesforce-style pagination: opaque `nextRecordsUrl`. Each case has a monotonic `version`. Can return 429 with `Retry-After`. |
 | Entitlement system | `GET /exports/accounts.csv`, `GET /feeds/entitlements.xml` | Export timestamp in a response header (CSV) or root attribute (XML), used as `asOf`. |
 | Usage warehouse | `POST /api/v2/statements` with `{ statement, bindings }`, backed by a SQLite file | Mirrors the shape of Snowflake's SQL REST API, so the warehouse gets real network timeouts and the same fault injection as the others. |
 

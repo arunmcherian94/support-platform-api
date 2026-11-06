@@ -8,6 +8,8 @@ Entitlement data comes from two feeds:
 - a **CSV export** from the ERP, the system of record: name, tier, contract end, ARR;
 - an **XML feed** with tier and renewal, which refreshes more often.
 
+We assume a typical ERP cadence: the CSV export runs nightly and the XML feed hourly. Polling faster than a feed changes buys no freshness.
+
 The sample data has two problems:
 1. **Renewal appears in both.** It's `contract_end` in the CSV and `renewal` in the XML, and the two can disagree.
 2. **Account IDs don't reconcile.** The CSV has `ACC-77`; every other system has `ACC-007` for what is clearly the same account (Acme Corp, Platinum, 2027-01-15). Zero-padding cannot fix this: `ACC-77` padded to three digits is `ACC-077`, not `ACC-007`. It is a genuine ID mismatch between systems, not a formatting variant.
@@ -17,10 +19,14 @@ Agents must know how old data is before acting on it, and Finance needs ARR from
 ## Decision
 
 **1. Snapshot access, not a fetch per request.**
-- The adapter loads both feeds at start-up and refreshes on an interval (default 5 minutes in dev).
+- The adapter loads both feeds at start-up, then polls each one every **15 minutes** (`ENTITLEMENT_REFRESH_SECONDS`; the demo and tests set it lower).
+- Polls are conditional (`If-None-Match` / `If-Modified-Since`). An unchanged feed costs a `304`, not a re-parse.
+- So data age is bounded by the export cadence plus at most one poll interval, not by the poll interval alone.
 - Requests read the last good snapshot.
 - If a refresh fails, we keep serving the last good snapshot, and `asOf` shows its real age. That makes stale-on-error a fallback built into the design.
-- "Entitlement unavailable" means one of two things: no snapshot has ever loaded, or the snapshot is older than the **maximum staleness of 24 hours**. Either returns a documented 503 problem response.
+- **Maximum staleness is 48 hours, measured from the CSV export's timestamp.** A nightly export is normally up to about 24 hours old, so a 24-hour limit would fail every day just before the next export. 48 hours tolerates one missed run.
+- "Entitlement unavailable" means one of two things: no snapshot has ever loaded, or the CSV export is older than 48 hours. Either returns a documented 503 problem response.
+- A stale or missing XML feed doesn't cause a 503: precedence falls back to the CSV for tier and renewal, and the response shows the source it used.
 
 **2. Field-level precedence.**
 
@@ -30,6 +36,8 @@ Agents must know how old data is before acting on it, and Finance needs ARR from
 | Tier, renewal date | XML when the XML feed's `asOf` is newer than the CSV export's; otherwise CSV |
 
 - Tier and renewal each carry their own `source` and `asOf` in the canonical model and the API response.
+- Name and ARR carry the CSV export's `asOf`.
+- **ARR updates happen in the ERP, never through us.** A changed ARR reaches the platform in the next CSV export, and the next poll picks it up. The platform is read-only for ARR. So ARR can lag a tier change seen in the XML by up to one export cycle; per-field `source` and `asOf` make that visible.
 - When the two sources disagree, we serve the value precedence picks. We also log a structured data-quality event and count it in a metric.
 
 **3. Account ID normalisation in two steps.**
@@ -39,16 +47,18 @@ Agents must know how old data is before acting on it, and Finance needs ARR from
 
 ## Alternatives considered
 - **Fetch per request.** Rejected: an export is a file produced on a schedule, so re-reading it per request adds latency and load and gains no freshness.
-- **Whole-record precedence (XML wins everything it has).** Simpler, but it loses the CSV's authority on ARR, and ARR is what Finance relies on.
+- **Whole-record precedence (XML wins everything it has).** Simpler, but it loses the CSV's authority on ARR, and ARR is what Finance relies on. (The XML doesn't carry ARR, so ARR always comes from the CSV.)
 - **CSV-only renewal** (ignore the fresher XML). Simpler, but agents would answer "renewal in the next 90 days" on stale dates.
 - **Fuzzy match on account name.** It would "fix" the sample, but it silently joins the wrong accounts when names collide or change. For data that drives escalation and ARR visibility, a wrong join is worse than a reported gap.
 - **Zero-padding only.** Doesn't reconcile `ACC-77` with `ACC-007` (see Context).
 
 ## Consequences
-- The Copilot question works off a snapshot up to 5 minutes old in normal operation, and up to 24 hours old during an ERP outage. Responses carry `asOf`, so agents and apps can see this.
+- Normal data age is set by the feeds, not by us: up to about a day for name and ARR, about an hour for tier and renewal, plus up to 15 minutes of polling delay. During an ERP outage, data can be up to 48 hours old. Responses carry `asOf` for each field group, so agents and apps can see this.
+- A same-day ARR correction is invisible until the next export. If Finance needs faster corrections, the fix is in the ERP integration (an ad hoc export or change events), not a shorter poll interval.
 - The crosswalk is a maintained artefact. In production it belongs in master data management, not a repository file.
 - **Security.** ARR lives in the snapshot in memory. Field-level authorization (`finance:read`) is applied at the API response boundary, so the snapshot never decides visibility.
 
 ## Revisit when
 - The ERP offers change events or a REST API with modified-since filters: switch from snapshot polling to incremental sync.
+- The real export cadence differs from the nightly CSV / hourly XML assumption: retune the poll interval and the staleness limit to match it.
 - The crosswalk grows past a handful of entries: master data management integration becomes a dependency.
