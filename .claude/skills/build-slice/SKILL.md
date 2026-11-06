@@ -50,6 +50,7 @@ Critical-tier code is always read line by line by the human afterwards, whicheve
 
 ## 3. Dispatch
 - Launch independent slices in one message, each with `isolation: "worktree"`.
+- **Commit everything the slices depend on first.** A worktree is cut from the default branch, not from your feature branch, so each prompt must start with: "run `git reset --hard <feature-branch>`, confirm `git log --oneline -1` shows `<expected commit>`, run `npm ci`; if the commit doesn't match, stop and report." Without that check, a slice builds against the wrong base without noticing.
 - Give each subagent a self-contained prompt:
   - the slice row;
   - the spec path and the AC IDs it covers;
