@@ -475,6 +475,15 @@ Every unit of work goes through these steps in order. The two approvals and the 
 12. **Human merge**.
 13. *Optional clean-room run*: fresh clone into a temp directory, follow the README exactly, and run `make test`. Required before Gate 5.
 
+**Process weight follows risk.** Each PR is tiered when it is planned:
+
+| Tier | PRs | Flow |
+|---|---|---|
+| **Critical** | Platform foundations (auth, rate limiting), read path (ARR filtering, cursors, breaker classification), comments and webhooks (idempotency, signing), escalate, MCP server and identity (delegated tokens, per-agent limits, audit), write tools and guardrails (approval gate, injection defences) | Every step: spec and plan approved separately, fresh-context review, sabotage checks, line-by-line human reading of critical code |
+| **Low** | Scaffold, fixtures and mocks, Postman and CI, demo, docs. The contract is reviewed endpoint by endpoint at Gate 2a, so it needs no fresh-context review either | Spec and plan approved together in one message; no fresh-context review (tests, lint and the human's PR review are the checks) |
+
+The human can promote any PR to critical. Nothing gets demoted mid-flight.
+
 ### Branch and PR rules
 - One branch per PR, cut from up-to-date `main`. Name: `<part>/<short-scope>`.
 - Open PRs with `gh pr create` using the template below. You (Claude Code) never merge, approve or push to `main` directly. The human reviews and merges.
