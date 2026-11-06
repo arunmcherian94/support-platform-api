@@ -1,5 +1,8 @@
 .DEFAULT_GOAL := help
-.PHONY: help install typecheck lint test check
+.PHONY: help install typecheck lint test check mocks
+
+# Fixture clock (S1 §4). Override with NOW=... on the command line.
+NOW ?= 2026-11-06T12:00:00Z
 
 help: ## List targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "}; {printf "  %-12s %s\n", $$1, $$2}'
@@ -17,3 +20,6 @@ test: ## Unit and integration tests
 	npm test
 
 check: typecheck lint test ## Everything CI runs
+
+mocks: ## Mock upstreams on :8081 (faults: MOCK_FAULTS='{"warehouse":{"down":true}}')
+	NOW=$(NOW) npx tsx mocks/server.ts

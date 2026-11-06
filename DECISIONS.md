@@ -31,6 +31,7 @@ Key trade-offs, assumptions and what was skipped, recorded at the time each deci
 ## Data quirks and how they're handled
 - **Mixed casing in case JSON** (`Status`, `Comments` vs `openedAt`): normalised to canonical camelCase in the case adapter; upstream shapes never leave the adapter.
 - **Inconsistent account IDs** (`ACC-77` vs `ACC-007`): see decision 9.
+- **Comments have no IDs in the sample shape.** The case mock gives each comment an `id` (Salesforce's CaseComment has one), because the contract returns comment IDs.
 - **Renewal in two sources** (`contract_end` vs `renewal`): see decision 8. Responses carry `source` and `asOf` for tier and renewal.
 - **Monthly usage grain**: the summary returns the latest month plus a month-on-month trend, not raw rows.
 
