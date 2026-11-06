@@ -1,7 +1,7 @@
 # ADR-0001: Runtime and core stack
 
 - **Status:** Accepted (2026-11-06, Gate 0)
-- **Deciders:** human owner
+- **Deciders:** @arunmcherian94 (repository owner)
 
 ## Context
 The service fronts three mocked upstreams for two kinds of consumer: apps and iPaaS flows, and AI agents over MCP. The contract (`openapi.yaml`, OpenAPI 3.1) is the source of truth at runtime. The service must validate **requests and responses** against it, so a handler cannot drift from the contract silently. The stack also needs a reference-quality MCP SDK, a zero-ops local store, and composable resilience policies.

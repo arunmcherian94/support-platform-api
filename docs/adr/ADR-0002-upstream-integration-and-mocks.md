@@ -1,7 +1,7 @@
 # ADR-0002: Upstream integration pattern and mock upstreams
 
 - **Status:** Accepted (2026-11-06, Gate 1)
-- **Deciders:** human owner
+- **Deciders:** @arunmcherian94 (repository owner)
 
 ## Context
 The platform fronts three systems with different interfaces:

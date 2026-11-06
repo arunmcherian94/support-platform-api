@@ -1,7 +1,7 @@
 # ADR-0004: iPaaS placement
 
 - **Status:** Accepted (2026-11-06, Gate 1). PLATFORM.md §8 expands the reasoning.
-- **Deciders:** human owner
+- **Deciders:** @arunmcherian94 (repository owner)
 
 ## Context
 The platform is consumed by traditional apps and iPaaS flows (MuleSoft, Workato, Boomi), and by AI agents. iPaaS tools are good at connector-based, scheduled or event-triggered data movement. They are weak at fine-grained authorization, custom business rules, agent guardrails and contract-first API governance.

@@ -1,7 +1,7 @@
 # ADR-0003: Entitlement data — snapshot access, source precedence and account IDs
 
 - **Status:** Accepted (2026-11-06, Gate 1)
-- **Deciders:** human owner
+- **Deciders:** @arunmcherian94 (repository owner)
 
 ## Context
 Entitlement data comes from two feeds:
