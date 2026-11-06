@@ -57,6 +57,18 @@ Key trade-offs, assumptions and what was skipped, recorded at the time each deci
 - **Account IDs in the API are canonical only** (`ACC-NNN`). ERP IDs such as `ACC-77` are resolved internally and never exposed. Passing one gets a 400 (see Skipped for the lookup we'd add).
 - Export cadence: nightly CSV, hourly XML (ADR-0003).
 
+## Data model
+SQLite via `node:sqlite`: zero ops, a single file, built into Node, and WAL mode lets reads proceed during writes. All SQL lives in the repository layer, so moving engines touches one place. Tables are `STRICT`; times are RFC 3339 UTC text; migrations are numbered `.sql` files applied once each, in order, in their own transaction.
+
+| Table | Purpose | Primary key and why | Indexes and the query each serves | Retention |
+| --- | --- | --- | --- | --- |
+| `idempotency_keys` | Replay or reject repeated writes | `(client_id, sub, endpoint, key)`: keys are scoped to caller and endpoint, so one client can never collide with or read another's | `expires_at`: the sweep `DELETE ... WHERE expires_at < now` | 24 hours, then swept |
+| `audit_log` | Who did what to which resource | `id` (autoincrementing): a total order for an append-only log | `(resource_type, resource_id, at)`: history of one case or account. `(actor_sub, at)`: what a user did. `(actor_agent, at)`: what an agent did | Kept. Triggers reject UPDATE and DELETE. In production, shipped to an immutable store with its own retention |
+| `webhook_subscriptions` | Registered receivers | `id`: the handle in the API | None: the table is small and read whole when fanning out. `secret_ref` points at a secret, never holds one | Until deleted |
+| `webhook_deliveries` | Outbox: one row per event per subscription, with the exact signed bytes | `id`: it is the `webhook-id` receivers use to dedupe | `(status, next_attempt_at)`: the worker's "pending and due" poll | 30 days after delivered or dead |
+
+Postgres path: the same tables with native types (`timestamptz`, `jsonb`, `bigint`); append-only enforced by `REVOKE UPDATE, DELETE` instead of triggers; the delivery index becomes a partial index on `status = 'pending'`; sweeping runs as a scheduled job; the outbox poll uses `FOR UPDATE SKIP LOCKED` so several workers can share it.
+
 ## Skipped, and how I'd do it with more time
 _Filled in as items are deferred; the final list mirrors the traceability matrix._
 
