@@ -41,6 +41,8 @@ Building this once, before any endpoint, means each later PR adds behaviour, not
    - `GET /dev/.well-known/jwks.json`;
    - `POST /dev/oauth/token` with the `client_credentials` grant for clients seeded from config. Each client has a secret, a set of allowed scopes and, for user simulation, a fixed `sub`.
    - **Not built:** the authorization-code flow listed in the contract (documented as not built). Token exchange comes in Part C.
+   - **Off unless asked for.** The issuer routes are mounted only when `DEV_ISSUER=true`. Start-up refuses `DEV_ISSUER=true` together with `NODE_ENV=production`, so a token-minting endpoint can't ship enabled by accident.
+   - **Why not a real identity provider locally** (e.g. Keycloak in Compose): more realistic (real login, key rotation), but a heavy container and slow start-up for a reviewer's five-minute setup. The verification path is the same either way: switching providers means changing the issuer URL, JWKS URL and audience in config.
 5. **Token verification** (`jose`), done the way a real resource server does it:
    - signature checked against the issuer's JWKS URL;
    - `alg` pinned to RS256;
@@ -79,6 +81,7 @@ Building this once, before any endpoint, means each later PR adds behaviour, not
 | S2-2 | A request that violates `openapi.yaml` gets 400 `validation-failed` with `errors[]` pointers. A handler response that violates the contract fails the test suite (it surfaces as a 500 and is logged). |
 | S2-3 | Every non-2xx is `application/problem+json` with `type`, `title`, `status` and `correlationId`. Unknown errors never leak a message or stack. |
 | S2-4 | Every log line is JSON with `correlationId`. A valid inbound `X-Request-Id` is echoed; an invalid one is replaced. |
+| S2-12 | The dev issuer's routes return 404 unless `DEV_ISSUER=true`. `DEV_ISSUER=true` with `NODE_ENV=production` stops start-up. |
 | S2-11 | Logs never contain request or response bodies, credentials or personal data. With requests carrying the fixture email and phone, an ARR value, a client secret and a bearer token, the captured logs contain none of them. |
 | S2-5 | Tokens from the dev issuer verify through its JWKS URL. Wrong `iss`, wrong `aud`, expired, not-yet-valid, `alg: none`, HS256, a bad signature, or a missing token all give 401 with `WWW-Authenticate`. |
 | S2-6 | An operation's required scope comes from its `security` entry in `openapi.yaml`; a token without it gets 403 `insufficient-scope` naming the scope. |
@@ -93,6 +96,7 @@ Building this once, before any endpoint, means each later PR adds behaviour, not
 - Key the rate limiter globally instead of per client.
 - Return a response field the contract doesn't allow.
 - Log the `Authorization` header, or log request bodies.
+- Mount the dev issuer regardless of `DEV_ISSUER`.
 
 ## 5. Decisions taken in this spec
 - **Response validation:** strict (a violation becomes a 500, and tests fail) in dev, test and CI. Production would run it in log-only mode behind a flag (`RESPONSE_VALIDATION=strict|log`), so contract drift is caught in logs and alerts instead of becoming an outage. The trade-off: drift reaches clients until it is fixed.
