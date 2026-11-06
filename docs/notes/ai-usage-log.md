@@ -11,3 +11,12 @@ One line per occurrence: what the AI got wrong or nearly got wrong, how it was c
 - 2026-11-06 PR 3 build: dispatched three parallel slices with worktree isolation, assuming worktrees branch from the current feature branch. They branch from the default branch, so all three started without the base commits. Caught by the base-commit check written into each slice prompt; each stopped before writing code. Fix: reset each worktree to the feature branch; the build-slice skill now requires that step.
 - 2026-11-06 PR 3 build: after the reset instruction, the resumed slices ran in the main checkout, not their worktrees. Two committed straight onto the feature branch, one made its own worktree. No conflict, because each owned separate files, but the isolation assumption was wrong. Caught by checking `git worktree list` and the log before integrating. Fix: the build-slice skill now covers resumed slices.
 - 2026-11-06 PR 3 review: the clock rule missed `Date()` (no `new`) and `globalThis.Date.now()`. Caught by the human asking for an explanation, which prompted another sabotage check. Fix: two more ESLint selectors; all four forms are now flagged.
+- 2026-11-06 PR 4a: the first phone-number mask also matched ISO dates. Caught by a false-positive test written alongside it. Fix: skip dates and bare digit runs.
+- 2026-11-06 PR 4a: the fresh-context review found four critical defects in code that passed all 112 tests:
+  - the phone mask still matched digit runs inside UUIDs, corrupting about one in eight correlation IDs in the logs;
+  - problems sent through the validation-hooked `res.json` fell through to Express's HTML error page, stack trace included, when the status wasn't declared;
+  - malformed or oversized JSON bodies returned 500;
+  - error stacks repeated unmasked personal data.
+
+  It also found a test that could not fail (shutdown without asserting the database closed) and a sabotage check the contract can't support (extra response fields pass validation). All critical findings were fixed with tests, each confirmed to fail on the old code. Pattern: tests written by the same author share its blind spots; an independent reviewer that runs probes catches what the tests don't.
+- 2026-11-06 PR 4a: Vitest collected test files from the slice worktrees under `.claude/`, inflating the count to 192. Noticed from the number. Fix: excluded `.claude/` from Vitest, ESLint and Prettier.

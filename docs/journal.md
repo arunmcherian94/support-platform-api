@@ -142,3 +142,27 @@ The PR plan in CLAUDE.md §11 is renumbered to match.
 - larger corrections go back through a spec PR.
 
 **Gate 3a.** Recommendations for every required Part B item are recorded as DECISIONS.md rows 22–29, approved with the S2 spec PR.
+
+## 2026-11-06 22:30 IST — PR 4a: platform core
+
+**What was done.** S2 criteria 1–4 and 8–11:
+- the contract-driven app (request and response validation, problem errors, correlation and logging);
+- config validated at start-up, and graceful shutdown with a drain deadline;
+- the store's migration runner and real schema, with the data-model section in DECISIONS.md;
+- `make run`, Dockerfile and Docker Compose.
+
+The store and run slices were built in parallel (sonnet, worktrees with a verified base); the base and the integration tests were built in session.
+
+**What changed and why.**
+- **The fresh-context review found four critical defects in code that passed every test:**
+  - correlation IDs corrupted by the phone mask;
+  - an HTML stack-trace page for undeclared statuses;
+  - 500s for malformed JSON;
+  - personal data in error stacks.
+
+  All were fixed with tests that were checked against the original code. Most majors were fixed too (case-insensitive redaction at any depth, listen errors, the drain deadline, production config). The rest are listed in the PR.
+- **Spec change:** the first migration ships the real schema, as the approved plan said, instead of the spec's trivial migration. Recorded in S2.
+
+**Open questions.**
+- `docker compose up` is untested: Docker isn't running on this machine.
+- Extra response fields pass validation, because response schemas don't set `unevaluatedProperties: false`. That's a contract follow-up.

@@ -38,3 +38,5 @@ Each row: the rule broken on purpose, and the test that failed. Reverted after e
 | Turn off strict response validation | `tests/http/pipeline.test.ts` (S2-2) | 4a |
 | Put an unknown error's message in the response | `tests/http/pipeline.test.ts` (S2-3) | 4a |
 | Accept any inbound `X-Request-Id` | `tests/http/pipeline.test.ts` (S2-4) | 4a |
+| Send problems through the validation-hooked `res.json` | `tests/http/review-fixes.test.ts` (undeclared status still a problem) | 4a |
+| Revert to the phone pattern that matches inside UUIDs | `tests/http/review-fixes.test.ts` (correlation IDs intact) | 4a |
