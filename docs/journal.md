@@ -64,3 +64,18 @@ The PR plan in CLAUDE.md §11 is renumbered to match.
 - Repo bootstrap: one empty root commit is pushed to `main` so feature branches have a base. This is the only direct push to `main`.
 
 **Open questions.** None blocking. Phase 1 source decisions are next.
+
+## 2026-11-06 14:20 IST — Phase 1: Gate 1 decided
+
+**What was done.**
+- The human owner approved all seven source decisions. They're recorded as ADR-0002 (integration pattern and mocks), ADR-0003 (entitlement snapshot, precedence, IDs) and ADR-0004 (iPaaS placement).
+- Spec S1 holds the ground-truth table for the sample question. Its date arithmetic was verified by script, not by hand.
+- DECISIONS.md started, with the decision log and data quirks.
+- CI kept as the minimal workflow (typecheck, lint, tests). Schemathesis and Newman stay as local `make` targets: running the server and mocks inside CI isn't worth the time here.
+- Coding flow tiered by risk (CLAUDE.md §11). Critical PRs get every step; low-risk PRs get a combined spec and plan approval and no fresh-context review.
+
+**What changed and why.** Working through the ID quirk showed that zero-padding can't reconcile `ACC-77` with `ACC-007` (`ACC-77` pads to `ACC-077`). It's a genuine cross-system mismatch, so we added an explicit crosswalk rather than a formatting rule.
+
+**Open questions (for Part A).**
+- How "no usage data" vs "warehouse down" appear in the customer response.
+- Whether escalation is a status or a flag.
