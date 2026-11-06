@@ -133,3 +133,12 @@ The PR plan in CLAUDE.md §11 is renumbered to match.
 - The oracle test also asserts the customer-level answer.
 
 **Open questions.** None.
+
+## 2026-11-06 21:15 IST — Process: spec PRs for critical work; Gate 3a
+
+**What changed and why.** The human asked whether a spec should be committed in a PR before it is built. The working agreement only required specs to be written and approved before code, with approval given in the session. For critical-tier work, specs now ship in their own `spec/…` PR, and merging it is the approval:
+- design and code approval become separate, visible acts on GitHub, as with design proposals merged before code (KEPs, RFCs);
+- small spec corrections found while building go in the implementation PR as their own commit, listed under "Spec changes";
+- larger corrections go back through a spec PR.
+
+**Gate 3a.** Recommendations for every required Part B item are recorded as DECISIONS.md rows 22–29, approved with the S2 spec PR.

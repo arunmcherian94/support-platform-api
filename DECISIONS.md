@@ -27,6 +27,15 @@ Key trade-offs, assumptions and what was skipped, recorded at the time each deci
 | 19 | `case.escalated`: Standard Webhooks; small payload (IDs, routing fields, actor; no ARR or free text); retries over about 23h, then dead-letter | Receivers fetch the rest with their own scopes | ADR-0005 |
 | 20 | Comments on closed cases: no platform rule | The case system owns that rule | ADR-0005 |
 | 21 | `GET /v1/cases/{caseId}` added | The way to get the `ETag` that escalate needs | ADR-0005 |
+| 22 | Gate 3a: `make run` **and** `docker compose up` | `make` for development, Compose for reviewers | [S2](docs/specs/S2-platform-foundations.md) |
+| 23 | Gate 3a: timeouts per upstream within an overall request budget | One slow optional upstream must not consume the whole request | read-path spec |
+| 24 | Gate 3a: retries via cockatiel with backoff and jitter; reads and idempotent writes only; 429 honours `Retry-After` | Retrying a non-idempotent write can duplicate it | read-path spec |
+| 25 | Gate 3a: a circuit breaker per upstream; the entitlement snapshot doubles as a stale-on-error fallback | Fail fast when an upstream is down; the snapshot design gives fallback for free (ADR-0003) | read-path spec |
+| 26 | Gate 3a: validation driven by `openapi.yaml`; responses strict in dev/test/CI, log-only option in production | The contract is the runtime source of truth; contract drift shouldn't become an outage | S2 |
+| 27 | Gate 3a: contract tests = response validation in every test, plus a local Schemathesis run | Schemathesis generates inputs nobody hand-picked; it needs the running stack, so it stays out of CI | — |
+| 28 | Gate 3a: Postman collection generated from the spec, then functional and regression checks added; Newman run | Starts complete, then gains the checks that matter | — |
+| 29 | Gate 3a: pino JSON logs, correlation ID plus `traceparent` | Required correlation, ready for tracing later | S2 |
+| 30 | Critical-tier specs ship in their own PR, merged before code | Approving a design and approving code are different acts; the merge makes the design decision durable and visible | CLAUDE.md §11 |
 
 ## Data quirks and how they're handled
 - **Mixed casing in case JSON** (`Status`, `Comments` vs `openedAt`): normalised to canonical camelCase in the case adapter; upstream shapes never leave the adapter.

@@ -446,7 +446,7 @@ Rule: **one logical block per PR**, sized so it can be reviewed properly in one 
 | 1 | Setup | `chore/scaffold-and-design` | Repo skeleton, TS/lint config, Makefile, docker-compose stub, CI skeleton, PR template, CLAUDE.md, design ADRs, `docs/specs/*`, journal start |
 | 2 | A | `part-a/openapi-contract` | Full `openapi.yaml` + Spectral ruleset. Split into foundations (components) and paths only if it becomes too large to review at once |
 | 3 | B | `part-b/fixtures-and-mocks` | Fixtures (JSON/CSV/XML/SQL) with near-misses, mock upstreams with fault injection, injectable clock |
-| 4 | B | `part-b/platform-foundations` | Server, spec-driven validation, correlation IDs/logging, problem+json errors, dev issuer + JWKS auth, rate limiting, SQLite store and migrations |
+| 4 | B | `spec/S2-platform-foundations`, then `part-b/platform-foundations` | Server, spec-driven validation, correlation IDs/logging, problem+json errors, dev issuer + JWKS auth, rate limiting, SQLite store and migrations |
 | 5 | B | `part-b/read-path` | Ports and adapters, resilience policies, `GET /v1/customers/{id}` (degraded mode, ARR scope), `GET /v1/cases` (filters, sort, cursors), contract tests |
 | 6 | B | `part-b/comments-and-webhooks` | Idempotent comments; webhook signer, delivery with retries, reference receiver and verification tests |
 | 7 | B | `part-b/postman-and-ci` | Postman collection/env, Newman target, CI running every check |
@@ -462,7 +462,7 @@ Rule: **one logical block per PR**, sized so it can be reviewed properly in one 
 Every unit of work goes through these steps in order. The two approvals and the merge are the human's; nothing skips ahead.
 
 1. **Spec**: write or update the spec in `docs/specs/` with ACs.
-2. **Approve** (human).
+2. **Approve** (human). For critical-tier work this is a merged spec PR (see below); for low-tier work, approval in the session.
 3. **Plan**: break the work into slices: files touched, tests, dependencies between slices, risk tier, which model builds each.
 4. **Approve** (human).
 5. **Build**: slices with no shared files or ordering dependency run in parallel (see `.claude/skills/build-slice/`).
@@ -479,7 +479,7 @@ Every unit of work goes through these steps in order. The two approvals and the 
 
 | Tier | PRs | Flow |
 |---|---|---|
-| **Critical** | Platform foundations (auth, rate limiting), read path (ARR filtering, cursors, breaker classification), comments and webhooks (idempotency, signing), escalate, MCP server and identity (delegated tokens, per-agent limits, audit), write tools and guardrails (approval gate, injection defences) | Every step: spec and plan approved separately, fresh-context review, sabotage checks, line-by-line human reading of critical code |
+| **Critical** | Platform foundations (auth, rate limiting), read path (ARR filtering, cursors, breaker classification), comments and webhooks (idempotency, signing), escalate, MCP server and identity (delegated tokens, per-agent limits, audit), write tools and guardrails (approval gate, injection defences) | Every step: the spec merged in its own PR before any code, the plan approved separately, fresh-context review, sabotage checks, line-by-line human reading of critical code |
 | **Low** | Scaffold, fixtures and mocks, Postman and CI, demo, docs. The contract is reviewed endpoint by endpoint at Gate 2a, so it needs no fresh-context review either | Spec and plan approved together in one message; no fresh-context review (tests, lint and the human's PR review are the checks) |
 
 The human can promote any PR to critical. Nothing gets demoted mid-flight.
@@ -487,9 +487,10 @@ The human can promote any PR to critical. Nothing gets demoted mid-flight.
 ### Branch and PR rules
 - **Every change goes on a new branch and reaches `main` only through a PR that a human merges.** That covers every feature, fix, doc and config change, however small. Nobody commits or pushes to `main` directly; the one exception was the empty bootstrap commit that created the repository. Fixes to an open PR go on that PR's branch; fixes after a merge get a new branch (`fix/<short-scope>`).
 - **Enforced, not just written down:** a GitHub ruleset on `main` blocks direct pushes and force-pushes and requires a PR with the `ci` check green.
-- One branch per PR, cut from up-to-date `main`. Name: `<part>/<short-scope>` (`fix/…`, `docs/…` and `chore/…` for work outside the part plan).
+- One branch per PR, cut from up-to-date `main`. Name: `<part>/<short-scope>` (`fix/…`, `docs/…` and `chore/…` for work outside the part plan; `spec/<id>-<scope>` for spec PRs).
+- **Critical tier: the spec ships first, in its own PR.** A `spec/<id>-<scope>` PR carries only the spec (and any gate decisions it records). Merging it is the approval, and the implementation branch is cut after the merge. If building shows the spec needs a small change, it goes in the implementation PR as its own `docs(spec): …` commit, listed under "Spec changes" in the PR description. A larger design change stops the build and goes back through a spec PR. Specs carry a status line: Draft → Approved (merged) → Implemented. Plans describe how, not what, so they stay in the session.
 - Open PRs with `gh pr create` using the template below. You (Claude Code) never merge, approve or push to `main` directly. The human reviews and merges.
-- **Contract changes only in contract PRs.** If an implementation PR needs a spec change, stop, raise it, and make it a separate small PR first. The spec leads; code follows.
+- **Contract changes only in contract PRs.** If an implementation PR needs a change to `openapi.yaml`, stop, raise it, and make it a separate small PR first. The spec leads; code follows.
 - Each PR must be green: typecheck, lint, Spectral, tests (and Newman once it exists).
 - Merge with a merge commit (`--merge`), not squash, so the small commits and the PR boundaries both stay visible in history.
 - Never force-push `main`. Force-pushing your own unmerged branch after an autosquash rebase is fine.
