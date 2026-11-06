@@ -82,3 +82,9 @@ Launch the `fresh-reviewer` agent with the diff range (`git diff main...HEAD`), 
 
 ## 7. Prepare the PR (step 10)
 Fill `.github/pull_request_template.md`, open it with `gh pr create`, and stop. The human reviews and merges.
+
+## Known gap: no checkpoint or resume
+Slice state lives only in git: each slice commits once, at the end. If a slice crashes mid-way, its worktree keeps the uncommitted files (worktrees with changes are not auto-removed), but nothing records which slices finished. If this becomes a problem:
+- keep a slice ledger (slice, status, worktree path, commit hash) in the session scratchpad, updated at dispatch, completion and integration;
+- have slices make checkpoint commits on their own branch, squashed at integration;
+- on resume, re-dispatch only slices without a commit, pointing each at its existing worktree.
