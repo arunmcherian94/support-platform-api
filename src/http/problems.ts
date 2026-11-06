@@ -135,22 +135,26 @@ export function errorHandler(logger: Logger) {
       );
       return;
     }
+    // The validator rebuilds security-handler errors (a 503 becomes its own 500);
+    // the handler leaves the real problem (type, headers) on res.locals.
+    const stashed = (res.locals as { authProblem?: unknown }).authProblem;
+    if (isValidatorError(error) && stashed instanceof AppError) {
+      if (stashed.status >= 500)
+        logger.error({ problem: stashed.problem }, 'authentication failed');
+      sendProblem(req, res, stashed);
+      return;
+    }
     if (isValidatorError(error) && (error.status === 401 || error.status === 403)) {
-      // The validator rebuilds security-handler errors; the handler leaves the
-      // real problem (type, WWW-Authenticate) on res.locals.
-      const stashed = (res.locals as { authProblem?: unknown }).authProblem;
       sendProblem(
         req,
         res,
-        stashed instanceof AppError
-          ? stashed
-          : error.status === 401
-            ? new AppError('unauthorized', 'A valid bearer token is required.', {
-                headers: { 'WWW-Authenticate': 'Bearer' },
-              })
-            : new AppError('insufficient-scope', 'The token lacks a required scope.', {
-                headers: { 'WWW-Authenticate': 'Bearer error="insufficient_scope"' },
-              }),
+        error.status === 401
+          ? new AppError('unauthorized', 'A valid bearer token is required.', {
+              headers: { 'WWW-Authenticate': 'Bearer' },
+            })
+          : new AppError('insufficient-scope', 'The token lacks a required scope.', {
+              headers: { 'WWW-Authenticate': 'Bearer error="insufficient_scope"' },
+            }),
       );
       return;
     }
