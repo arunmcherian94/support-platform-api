@@ -5,6 +5,10 @@
  * production or mock code is imported. It proves the fixtures encode the
  * approved answer in S1 §4. The read path must later return the same set
  * through the API.
+ *
+ * Each CSV row is a contract (ADR-0003): an account's tier is the highest
+ * tier among its active contracts, renewal is the earliest active contract
+ * end, and expired contracts (end before today) are ignored.
  */
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
@@ -43,10 +47,21 @@ function effectiveEntitlements(): Map<string, Entitlement> {
   const crosswalk = new Map(
     csvRows(fixture('entitlement/id-crosswalk.csv')).map((r) => [r.source_id, r.canonical_id]),
   );
+  const rank = ['Silver', 'Gold', 'Platinum'];
   const result = new Map<string, Entitlement>();
   for (const row of csvRows(fixture('entitlement/accounts.csv'))) {
     const id = crosswalk.get(row.account_id ?? '') ?? row.account_id ?? '';
-    result.set(id, { tier: row.support_tier ?? '', renewal: row.contract_end ?? '' });
+    const tier = row.support_tier ?? '';
+    const end = row.contract_end ?? '';
+    if (Date.parse(`${end}T00:00:00Z`) < today) continue; // expired contract
+    const current = result.get(id);
+    result.set(id, {
+      tier:
+        current === undefined || rank.indexOf(tier) > rank.indexOf(current.tier)
+          ? tier
+          : current.tier,
+      renewal: current === undefined || end < current.renewal ? end : current.renewal,
+    });
   }
   // The XML feed (generatedAt 11:00Z) is newer than the CSV export (02:00Z),
   // so it wins for tier and renewal (ADR-0003).
@@ -85,6 +100,12 @@ describe('ground truth for the sample question (S1 §4)', () => {
       .sort();
 
     expect(answer).toEqual(['CS-10231', 'CS-10233', 'CS-10236', 'CS-10239', 'CS-10240']);
+
+    // The question asks which customers, so the answer is per account.
+    const customers = [
+      ...new Set(cases.filter((c) => answer.includes(c.id)).map((c) => c.accountId)),
+    ].sort();
+    expect(customers).toEqual(['ACC-007', 'ACC-012', 'ACC-030', 'ACC-042']);
   });
 
   it('keeps the quirks the design depends on', () => {

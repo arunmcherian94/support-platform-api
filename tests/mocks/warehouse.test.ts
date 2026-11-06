@@ -43,8 +43,9 @@ describe('usage warehouse mock (S1-4)', () => {
       'API_CALLS',
       'ACTIVE_USERS',
     ]);
-    expect(body.data.map((r) => r[1])).toEqual(['2026-09', '2026-08', '2026-07']);
-    expect(body.data[0]).toEqual(['ACC-007', '2026-09', '412.5', '1203331', '87']);
+    expect(body.data.map((r) => r[1])).toEqual(['2026-10', '2026-09', '2026-08']);
+    // The scenario's sample row is preserved.
+    expect(body.data[1]).toEqual(['ACC-007', '2026-09', '412.5', '1203331', '87']);
     expect(body.createdOn).toBe(Date.parse('2026-11-06T12:00:00Z'));
   });
 
