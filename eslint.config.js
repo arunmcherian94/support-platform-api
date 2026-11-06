@@ -32,6 +32,16 @@ export default tseslint.config(
           selector: "NewExpression[callee.name='Date'][arguments.length=0]",
           message: 'Use the injected Clock (src/clock.ts).',
         },
+        {
+          // Date() without `new` returns the current time as a string.
+          selector: "CallExpression[callee.name='Date']",
+          message: 'Use the injected Clock (src/clock.ts).',
+        },
+        {
+          // globalThis.Date.now() / window.Date.now() bypass the property rule above.
+          selector: "MemberExpression[object.property.name='Date'][property.name='now']",
+          message: 'Use the injected Clock (src/clock.ts).',
+        },
       ],
     },
   },
