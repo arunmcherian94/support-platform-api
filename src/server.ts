@@ -59,14 +59,13 @@ export async function startServer(
     db,
     ...(issuer === undefined ? {} : { preValidation: [issuer.router] }),
     // Verified against the issuer's JWKS URL, as a production resource server would.
-    securityHandler: createSecurityHandler(createVerifier({ config, clock })),
-    afterAuth: [
-      createRateLimiter({
+    securityHandler: createSecurityHandler(createVerifier({ config, clock }), {
+      rateLimit: createRateLimiter({
         clock,
         clientPerMinute: config.rateLimit.clientPerMinute,
         agentPerMinute: config.rateLimit.agentPerMinute,
-      }),
-    ],
+      }).check,
+    }),
     ...(options.handlers === undefined ? {} : { handlers: options.handlers }),
   });
   const server = await new Promise<Server>((resolve, reject) => {

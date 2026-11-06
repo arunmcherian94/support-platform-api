@@ -14,7 +14,7 @@
  * Requests without an identity (health probes) pass through untouched;
  * unauthenticated floods are the gateway's job.
  */
-import type { RequestHandler } from 'express';
+import type { RequestHandler, Response } from 'express';
 import type { Clock } from '../clock.js';
 import type { AuthLocals, Identity } from '../auth/types.js';
 import { AppError } from './problems.js';
@@ -161,17 +161,11 @@ export function createTokenBuckets(options: RateLimitOptions): RateLimiter {
   };
 }
 
-/** Express middleware; runs after authentication (`AppDeps.afterAuth`). */
-export function createRateLimiter(
-  options: RateLimitOptions,
-): RequestHandler & { limiter: RateLimiter } {
-  const limiter = createTokenBuckets(options);
-  const middleware: RequestHandler = (_req, res, next) => {
-    const identity = (res.locals as AuthLocals).identity;
-    if (identity === undefined) {
-      next();
-      return;
-    }
+/** Takes from the caller's buckets, sets the RateLimit headers, and returns the 429 problem when refused. */
+export type RateLimitCheck = (identity: Identity, res: Response) => AppError | undefined;
+
+export function rateLimitCheck(limiter: RateLimiter): RateLimitCheck {
+  return (identity, res) => {
     const decision = limiter.take(identity);
     const name = `"${decision.policy}"`;
     res.set('RateLimit-Policy', `${name};q=${String(decision.quota)};w=${String(WINDOW_SECONDS)}`);
@@ -179,17 +173,34 @@ export function createRateLimiter(
       'RateLimit',
       `${name};r=${String(decision.remaining)};t=${String(decision.resetSeconds)}`,
     );
-    if (!decision.allowed) {
-      next(
-        new AppError(
-          'rate-limited',
-          `Quota of ${String(decision.quota)} requests per ${String(WINDOW_SECONDS)} seconds exceeded.`,
-          { headers: { 'Retry-After': String(decision.retryAfterSeconds ?? 1) } },
-        ),
-      );
+    if (decision.allowed) return undefined;
+    return new AppError(
+      'rate-limited',
+      `Quota of ${String(decision.quota)} requests per ${String(WINDOW_SECONDS)} seconds exceeded.`,
+      { headers: { 'Retry-After': String(decision.retryAfterSeconds ?? 1) } },
+    );
+  };
+}
+
+/**
+ * Express middleware form, for apps whose identity is set without the security
+ * handler (tests). The server charges the bucket inside the security handler
+ * instead, right after the token is verified, so 400 and 403 responses to
+ * authenticated callers also consume quota and carry the headers.
+ */
+export function createRateLimiter(
+  options: RateLimitOptions,
+): RequestHandler & { limiter: RateLimiter; check: RateLimitCheck } {
+  const limiter = createTokenBuckets(options);
+  const check = rateLimitCheck(limiter);
+  const middleware: RequestHandler = (_req, res, next) => {
+    const identity = (res.locals as AuthLocals).identity;
+    if (identity === undefined) {
+      next();
       return;
     }
-    next();
+    const problem = check(identity, res);
+    next(problem);
   };
-  return Object.assign(middleware, { limiter });
+  return Object.assign(middleware, { limiter, check });
 }

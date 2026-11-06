@@ -9,7 +9,7 @@
  */
 import type { Response } from 'express';
 import { AppError } from '../http/problems.js';
-import type { AuthLocals, SecurityHandler } from './types.js';
+import type { AuthLocals, Identity, SecurityHandler } from './types.js';
 import { InvalidTokenError, IssuerUnavailableError, type Verifier } from './verify.js';
 
 // RFC 6750 §2.1: b64token after one or more spaces; the scheme is case-insensitive.
@@ -28,7 +28,17 @@ function unauthorized(res: Response, detail: string, challenge: string): never {
   );
 }
 
-export function createSecurityHandler(verifier: Verifier): SecurityHandler {
+export function createSecurityHandler(
+  verifier: Verifier,
+  options: {
+    /**
+     * Charged right after verification, before the scope check and request
+     * validation, so every authenticated response (including 400 and 403)
+     * consumes quota and carries the RateLimit headers.
+     */
+    rateLimit?: (identity: Identity, res: Response) => AppError | undefined;
+  } = {},
+): SecurityHandler {
   return async (req, requiredScopes) => {
     const res = req.res;
     if (res === undefined) throw new Error('security handler called without a response');
@@ -75,6 +85,8 @@ export function createSecurityHandler(verifier: Verifier): SecurityHandler {
 
     // Set before the scope check, so a 403 is still logged with who was refused.
     (res.locals as AuthLocals).identity = identity;
+    const limited = options.rateLimit?.(identity, res);
+    if (limited !== undefined) fail(res, limited, 429);
     const missing = requiredScopes.filter((scope) => !identity.scopes.includes(scope));
     if (missing.length > 0) {
       const names = missing.join(', ');
