@@ -1,6 +1,7 @@
 import { mkdirSync } from 'node:fs';
 import type { Server } from 'node:http';
 import { dirname } from 'node:path';
+import type { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
 import { systemClock } from './clock.js';
 import { ConfigError, loadConfig, type Config } from './config.js';
@@ -12,8 +13,12 @@ import { migrate } from './store/migrate.js';
 export interface RunningServer {
   server: Server;
   url: string;
-  /** Stops accepting connections, drains in-flight requests, closes the database. */
-  shutdown(): Promise<void>;
+  db: DatabaseSync;
+  /**
+   * Stops accepting connections, drains in-flight requests, closes the database.
+   * Requests still running after `drainTimeoutMs` are cut off.
+   */
+  shutdown(drainTimeoutMs?: number): Promise<void>;
 }
 
 export async function startServer(
@@ -33,19 +38,29 @@ export async function startServer(
     db,
     ...(options.handlers === undefined ? {} : { handlers: options.handlers }),
   });
-  const server = await new Promise<Server>((resolve) => {
-    const s = app.listen(config.port, () => {
-      resolve(s);
+  const server = await new Promise<Server>((resolve, reject) => {
+    // Express 5 passes listen errors (e.g. EADDRINUSE) to the callback.
+    const s = app.listen(config.port, (error) => {
+      if (error) {
+        db.close();
+        reject(error);
+      } else resolve(s);
     });
   });
   const address = server.address();
   const port = typeof address === 'object' && address !== null ? address.port : config.port;
 
   let closing: Promise<void> | undefined;
-  const shutdown = (): Promise<void> => {
+  const shutdown = (drainTimeoutMs = 10_000): Promise<void> => {
     closing ??= new Promise<void>((resolve, reject) => {
       logger.info('shutting down: draining in-flight requests');
+      const deadline = setTimeout(() => {
+        logger.warn('drain deadline reached: closing remaining connections');
+        server.closeAllConnections();
+      }, drainTimeoutMs);
+      deadline.unref();
       server.close((error) => {
+        clearTimeout(deadline);
         db.close();
         logger.info('shutdown complete');
         if (error) reject(error);
@@ -55,7 +70,7 @@ export async function startServer(
     });
     return closing;
   };
-  return { server, url: `http://127.0.0.1:${port}`, shutdown };
+  return { server, url: `http://127.0.0.1:${port}`, db, shutdown };
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

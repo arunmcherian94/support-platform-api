@@ -74,8 +74,20 @@ export function loadConfig(env: Env = process.env): Config {
   if (devIssuer && nodeEnv === 'production') {
     throw new ConfigError('DEV_ISSUER', 'must not be true when NODE_ENV=production');
   }
-  const port = integer(env, 'PORT', 8080, 1, 65535);
-  const mocks = read(env, 'MOCKS_URL', 'http://127.0.0.1:8081');
+  // 0 asks the OS for a free port (tests).
+  const port = integer(env, 'PORT', 8080, 0, 65535);
+  const mocks = url(env, 'MOCKS_URL', 'http://127.0.0.1:8081');
+  const now = env.NOW;
+  if (now !== undefined && now !== '' && Number.isNaN(Date.parse(now))) {
+    throw new ConfigError('NOW', `must be an RFC 3339 timestamp (got "${now}")`);
+  }
+  if (nodeEnv === 'production') {
+    // No silent fallback to a local issuer: production must name its identity provider.
+    for (const name of ['ISSUER_URL', 'AUDIENCE']) {
+      if (read(env, name, '') === '')
+        throw new ConfigError(name, 'is required when NODE_ENV=production');
+    }
+  }
   return {
     nodeEnv,
     port,

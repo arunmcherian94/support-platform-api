@@ -59,7 +59,9 @@ function main(): void {
   };
   for (const signal of ['SIGINT', 'SIGTERM'] as const) {
     process.on(signal, () => {
-      stopAll(signal);
+      // Children get the terminal's SIGINT too; forward SIGTERM so each drains once
+      // instead of being killed by a second SIGINT.
+      stopAll('SIGTERM');
     });
   }
 
