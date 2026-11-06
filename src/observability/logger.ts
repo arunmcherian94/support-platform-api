@@ -24,8 +24,16 @@ const REDACT_PATHS = SECRET_FIELDS.flatMap((field) => [
 ]);
 
 const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
-// International or local phone numbers: an optional +, then 9+ digits with separators.
-const PHONE = /\+?\d[\d\s().-]{7,}\d/g;
+// Candidate phone numbers; `maskPhone` decides. Dates and plain numbers are left alone.
+const PHONE_CANDIDATE = /\+?\(?\d[\d\s().-]{7,}\d/g;
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}/;
+
+function maskPhone(match: string): string {
+  const digits = match.replace(/\D/g, '').length;
+  if (digits < 9 || ISO_DATE.test(match)) return match;
+  // A leading + or separators make it phone-shaped; a bare run of digits may be an ID or count.
+  return match.startsWith('+') || /[\s().-]/.test(match) ? '[phone]' : match;
+}
 
 /**
  * Backstop masking for personal data in free text that reaches the logger.
@@ -33,7 +41,7 @@ const PHONE = /\+?\d[\d\s().-]{7,}\d/g;
  */
 export function maskPersonalData(value: unknown, depth = 0): unknown {
   if (typeof value === 'string') {
-    return value.replace(EMAIL, '[email]').replace(PHONE, '[phone]');
+    return value.replace(EMAIL, '[email]').replace(PHONE_CANDIDATE, maskPhone);
   }
   if (depth > 5 || value === null || typeof value !== 'object') return value;
   if (Array.isArray(value)) return value.map((item) => maskPersonalData(item, depth + 1));

@@ -4,7 +4,7 @@ import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { systemClock } from './clock.js';
 import { ConfigError, loadConfig, type Config } from './config.js';
-import { createApp } from './http/app.js';
+import { createApp, type OperationHandlers } from './http/app.js';
 import { createLogger, type Logger } from './observability/logger.js';
 import { openDatabase } from './store/db.js';
 import { migrate } from './store/migrate.js';
@@ -16,13 +16,23 @@ export interface RunningServer {
   shutdown(): Promise<void>;
 }
 
-export async function startServer(config: Config, logger: Logger): Promise<RunningServer> {
+export async function startServer(
+  config: Config,
+  logger: Logger,
+  options: { handlers?: OperationHandlers } = {},
+): Promise<RunningServer> {
   if (config.dbPath !== ':memory:') mkdirSync(dirname(config.dbPath), { recursive: true });
   const db = openDatabase(config.dbPath);
   const applied = migrate(db);
   if (applied.length > 0) logger.info({ migrations: applied }, 'migrations applied');
 
-  const app = createApp({ config, clock: systemClock(), logger, db });
+  const app = createApp({
+    config,
+    clock: systemClock(),
+    logger,
+    db,
+    ...(options.handlers === undefined ? {} : { handlers: options.handlers }),
+  });
   const server = await new Promise<Server>((resolve) => {
     const s = app.listen(config.port, () => {
       resolve(s);
