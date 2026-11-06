@@ -15,8 +15,10 @@ export interface RunningServer {
   url: string;
   db: DatabaseSync;
   /**
-   * Stops accepting connections, drains in-flight requests, closes the database.
-   * Requests still running after `drainTimeoutMs` are cut off.
+   * Reports not-ready, waits `config.shutdownReadinessDelayMs` so load balancers
+   * stop routing here, then stops accepting connections, drains in-flight
+   * requests and closes the database. Requests still running after
+   * `drainTimeoutMs` are cut off.
    */
   shutdown(drainTimeoutMs?: number): Promise<void>;
 }
@@ -31,8 +33,10 @@ export async function startServer(
   const applied = migrate(db);
   if (applied.length > 0) logger.info({ migrations: applied }, 'migrations applied');
 
+  let draining = false;
   const app = createApp({
     config,
+    isDraining: () => draining,
     clock: systemClock(),
     logger,
     db,
@@ -51,9 +55,9 @@ export async function startServer(
   const port = typeof address === 'object' && address !== null ? address.port : config.port;
 
   let closing: Promise<void> | undefined;
-  const shutdown = (drainTimeoutMs = 10_000): Promise<void> => {
-    closing ??= new Promise<void>((resolve, reject) => {
-      logger.info('shutting down: draining in-flight requests');
+  const closeAndDrain = (drainTimeoutMs: number): Promise<void> =>
+    new Promise<void>((resolve, reject) => {
+      logger.info('draining in-flight requests');
       const deadline = setTimeout(() => {
         logger.warn('drain deadline reached: closing remaining connections');
         server.closeAllConnections();
@@ -68,6 +72,16 @@ export async function startServer(
       });
       server.closeIdleConnections();
     });
+  const shutdown = (drainTimeoutMs = 10_000): Promise<void> => {
+    draining = true;
+    closing ??= (async () => {
+      logger.info(
+        { readinessDelayMs: config.shutdownReadinessDelayMs },
+        'shutting down: readiness now 503',
+      );
+      await new Promise((resolve) => setTimeout(resolve, config.shutdownReadinessDelayMs));
+      await closeAndDrain(drainTimeoutMs);
+    })();
     return closing;
   };
   return { server, url: `http://127.0.0.1:${port}`, db, shutdown };

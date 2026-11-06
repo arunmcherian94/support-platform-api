@@ -15,6 +15,8 @@ export interface Config {
   audience: string;
   upstreams: { cases: string; entitlement: string; warehouse: string };
   rateLimit: { clientPerMinute: number; agentPerMinute: number };
+  /** On shutdown, how long readiness reports 503 before the listener closes. */
+  shutdownReadinessDelayMs: number;
 }
 
 export class ConfigError extends Error {
@@ -107,6 +109,7 @@ export function loadConfig(env: Env = process.env): Config {
       entitlement: url(env, 'ENTITLEMENT_URL', mocks),
       warehouse: url(env, 'WAREHOUSE_URL', mocks),
     },
+    shutdownReadinessDelayMs: integer(env, 'SHUTDOWN_READINESS_DELAY_MS', 0, 0, 60_000),
     rateLimit: {
       clientPerMinute: integer(env, 'RATE_LIMIT_CLIENT_PER_MINUTE', 100, 1, 100_000),
       agentPerMinute: integer(env, 'RATE_LIMIT_AGENT_PER_MINUTE', 30, 1, 100_000),

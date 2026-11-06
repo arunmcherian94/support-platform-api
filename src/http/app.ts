@@ -20,6 +20,8 @@ export interface AppDeps {
   logger: Logger;
   db: DatabaseSync;
   handlers?: OperationHandlers;
+  /** True once shutdown has started; readiness then reports 503. */
+  isDraining?: () => boolean;
   /** Routes mounted before the validator (e.g. the dev token issuer). */
   preValidation?: express.Router[];
 }
@@ -35,7 +37,10 @@ interface OpenApiRequest {
  */
 export function createApp(deps: AppDeps): Express {
   const { config, logger } = deps;
-  const handlers: OperationHandlers = { ...healthHandlers(deps.db), ...deps.handlers };
+  const handlers: OperationHandlers = {
+    ...healthHandlers(deps.db, deps.isDraining),
+    ...deps.handlers,
+  };
 
   const app = express();
   app.disable('x-powered-by');
