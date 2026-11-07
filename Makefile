@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help install typecheck lint test check mocks run api postman mcp approve
+.PHONY: help install typecheck lint test check mocks run api postman mcp approve demo demo-live
 
 # Fixture clock (S1 §4). Override with NOW=... on the command line.
 NOW ?= 2026-11-06T12:00:00Z
@@ -38,3 +38,9 @@ mcp: ## MCP server over stdio for USER_TOKEN's user (expects make run)
 
 approve: ## Approve a pending escalation as the human: make approve ID=pa_... [REJECT=1]
 	NOW=$(NOW) npx tsx scripts/approve.ts $(ID)
+
+demo: ## Agent demo, dry run: lists the MCP tools, no LLM call (expects make run)
+	NOW=$(NOW) npx tsx mcp/demo/agent.ts
+
+demo-live: ## Agent demo against the OpenAI API (paid; needs OPENAI_API_KEY and the human's go-ahead)
+	NOW=$(NOW) npx tsx mcp/demo/agent.ts --live
