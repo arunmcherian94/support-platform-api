@@ -2,10 +2,10 @@
 
 - **Status:** Draft. Approved by merging its spec PR.
 - **Decisions:** ADR-0005 (idempotency, webhook conventions), DECISIONS rows 15 and 19, ADR-0002 (writes go through to the case system synchronously), Gate 3a row 24 (retry only idempotent writes).
-- **Traceability:** A3 and A5 (implementation), B1 (item 3 plus the webhook sender and reference receiver), the Part B ACs on idempotent comments and webhook verification.
+- **Traceability:** A3 and A5 (implementation), B1 (item 3 plus the webhook sender), the Part B ACs on idempotent comments and webhook verification.
 
 ## 1. Problem
-`POST /v1/cases/{caseId}/comments` must be safe to retry: a client that times out and sends again must not create a second comment. The `case.escalated` webhook needs a sender that signs, delivers and retries, and a receiver that proves signatures, timestamps and replays are checked. Escalate itself comes in Part C; this spec builds the delivery path it will use.
+`POST /v1/cases/{caseId}/comments` must be safe to retry: a client that times out and sends again must not create a second comment. The `case.escalated` webhook needs a sender that signs, delivers and retries. The brief asks for a sender or a receiver; we build the sender, because escalate (Part C) must send `case.escalated`, plus the verification function a receiver runs, which the tests use to prove the signatures. Escalate itself comes in Part C; this spec builds the delivery path it will use.
 
 ## 2. Scope
 
@@ -30,13 +30,13 @@ The contract already fixes the outcomes (ADR-0005): replay on the same key and b
 - **Missing header:** 400 `idempotency-key-required` (the validator's generic `validation-failed` is mapped for this header).
 - **Author** is the token's `sub`: for agents, the user the agent acts for.
 - **Upstream outcomes:** 201 → 201 with `Location: /v1/cases/{caseId}/comments/{commentId}`; a 404 → 404 `not-found`; other failures map as in S3 §2.3. The platform adds no rule on closed cases (decision 20).
-- **Audit:** each create, replay and rejection writes an `audit_log` row: actor `sub`, agent, client, action `case.comment`, the case, the outcome, latency, and redacted arguments (body length only, never the text).
-- **Expiry:** expired keys are swept hourly (`DELETE … WHERE expires_at < now`) and are also ignored on read, so the sweep is housekeeping, not correctness.
+- **Expiry:** an expired key is ignored on read and replaced on the next claim, so correctness never depends on cleanup. A periodic sweep (`DELETE … WHERE expires_at < now`, served by the `expires_at` index) is housekeeping, deferred.
+- **Audit** of writes, with `sub` and `act.sub`, is built once in Part C, where the audit log is designed for tool calls.
 
 ### 2.2 Webhook subscriptions
 - Seeded at start-up from `config/webhook-subscriptions.json` (id, URL, event types, secret references), upserted into `webhook_subscriptions`. There is no subscription API (deferred, CLAUDE.md §4).
-- **Secrets are referenced, never stored:** `secret_ref` names one or more environment variables (comma-separated, for rotation). Each holds a Standard Webhooks secret (`whsec_` + base64). Start-up stops with a config error if a referenced variable is missing. `.env.example` carries an obviously fake development secret.
-- The default subscription points at the reference receiver (§2.5), so `make run` shows deliveries end to end.
+- **Secrets are referenced, never stored:** `secret_ref` names the environment variable that holds the subscription's Standard Webhooks secret (`whsec_` + base64). Start-up stops with a config error if it is missing. `.env.example` carries an obviously fake development secret.
+- **One secret per subscription.** Rotation is deferred; the signature header is already a list, so adding a second secret later is additive.
 
 ### 2.3 Enqueueing events
 - `enqueueEvent(db, type, data)` builds the Standard Webhooks envelope `{ type, timestamp, data }`, serialises it **once**, and inserts one `webhook_deliveries` row per active subscription to that event type, inside the caller's transaction. Escalate (Part C) calls it in the same transaction as its audit record, so an event is never lost or sent for a change that didn't happen.
@@ -47,7 +47,7 @@ The contract already fixes the outcomes (ADR-0005): replay on the same key and b
 ### 2.4 Dispatcher
 - Polls every `WEBHOOK_DISPATCH_INTERVAL_MS` (default 1000) for `status = 'pending' AND next_attempt_at <= now` (the injected clock), oldest first, up to 20 per tick. Ticks never overlap.
 - **Each attempt:**
-  - signs with a fresh `webhook-timestamp` (Unix seconds from the clock): `v1,` + base64(HMAC-SHA256(secret, `{id}.{timestamp}.{payload}`)), one entry per secret in the subscription, space-separated;
+  - signs with a fresh `webhook-timestamp` (Unix seconds from the clock): `v1,` + base64(HMAC-SHA256(secret, `{id}.{timestamp}.{payload}`));
   - POSTs the stored bytes with `content-type: application/json`, a 15-second timeout, and redirects not followed;
   - **2xx:** `delivered`, with `delivered_at`.
   - **410:** the subscription is disabled (`active = 0`, `disabled_reason`) and the delivery is marked `dead`.
@@ -57,23 +57,25 @@ The contract already fixes the outcomes (ADR-0005): replay on the same key and b
 - **Shutdown:** the dispatcher stops polling and waits for in-flight attempts (bounded by their timeout) before the database closes.
 - **One process.** With several instances, the poll would claim rows with `FOR UPDATE SKIP LOCKED` on Postgres (DECISIONS "Data model").
 
-### 2.5 Reference receiver
-- `src/events/verify.ts`: `verifyWebhook({ id, timestamp, signature, rawBody }, secrets, now)`, the verification a receiver should run:
+### 2.5 Receiver verification
+- `src/events/verify.ts`: `verifyWebhook({ id, timestamp, signature, rawBody }, secret, now, seen)`, the verification a receiver should run:
   - all three headers present;
   - timestamp within 5 minutes of `now`, in either direction;
-  - an HMAC over `{id}.{timestamp}.{raw body}` with each of the receiver's secrets, compared in constant time with each `v1,` entry;
-  - verified against the raw bytes, never a re-parsed body.
-- A small receiver app (`mocks/webhook-receiver.ts`), started by `make run`, uses it: raw-body parsing, then verify, then dedupe on `webhook-id` (remembered for longer than the timestamp window), then 204. A failure gets 400 for missing headers and 401 for a bad signature or timestamp. A duplicate gets 204 without processing again, so the sender stops retrying. It lists what it accepted at `GET /received` for tests and demos.
+  - an HMAC over `{id}.{timestamp}.{raw body}`, compared in constant time with each `v1,` entry of the header;
+  - verified against the raw bytes, never a re-parsed body;
+  - a `webhook-id` already in `seen` is reported as a duplicate (to acknowledge, not process).
+- The tests run it inside a small test receiver (raw-body parsing, then `verifyWebhook`), against which the dispatcher delivers. No runnable receiver app ships (the brief asks for a sender or a receiver).
 
 ### 2.6 Config
 New variables, validated at start-up:
 - `WEBHOOK_DISPATCH_INTERVAL_MS` (default 1000);
-- the secret variables named by subscriptions (e.g. `WEBHOOK_SECRET_LOCAL`).
+- the secret variable named by each subscription (e.g. `WEBHOOK_SECRET_LOCAL`).
 
 **Out of scope:**
 - escalate and the `case.escalated` payload's content (Part C);
 - the transactional outbox (pass 2; the deliveries table already acts as one for this event);
-- a subscription management API, and manual redelivery tooling for dead deliveries (deferred);
+- a subscription management API, secret rotation, manual redelivery tooling for dead deliveries, a sweep of expired keys and a runnable receiver app (deferred);
+- audit of writes (Part C);
 - ordering guarantees (the contract says none).
 
 ## 3. Acceptance criteria
@@ -85,12 +87,10 @@ New variables, validated at start-up:
 | S4-3 | Two concurrent requests with the same key: exactly one reaches the case system; the other gets 409 `request-in-progress` (or, if it arrives after completion, the replay). |
 | S4-4 | Keys are scoped: the same key from another client, another user or another case is a new request. An expired key is a new request. |
 | S4-5 | A failed create stores nothing, so a retry with the same key proceeds. If the case system created the comment but the response was lost, the retry returns that comment and creates no second one (external-ID dedupe, proven against the mock). |
-| S4-6 | Each create writes an audit row with the actor, the agent if any, the outcome and the body length, never the body text. |
-| S4-7 | An enqueued event is delivered to each matching active subscription with `webhook-id`, `webhook-timestamp` and `webhook-signature`, and the bytes received equal the stored payload. |
-| S4-8 | The reference receiver accepts a valid delivery and rejects a tampered body, the wrong secret, a timestamp outside 5 minutes, and a replayed `webhook-id` (no second processing). With two secrets configured (rotation), a delivery verifies against either. |
-| S4-9 | A failing receiver gets retries on the documented schedule (checked on the injected clock, jitter within ±20%), and the delivery becomes `dead` after the last retry. A 410 disables the subscription and stops delivery. A 2xx stops retries. |
-| S4-10 | Delivery state and logs never contain the receiver's response body or the secret. |
-| S4-11 | `make run` delivers an enqueued event to the reference receiver, and shutdown stops the dispatcher cleanly. |
+| S4-6 | An enqueued event is delivered to each matching active subscription with `webhook-id`, `webhook-timestamp` and `webhook-signature`, and the bytes received equal the stored payload. |
+| S4-7 | `verifyWebhook` accepts a real delivery from the dispatcher and rejects a tampered body, the wrong secret, a timestamp outside 5 minutes, and flags a replayed `webhook-id` as a duplicate. |
+| S4-8 | A failing receiver gets retries on the documented schedule (checked on the injected clock, jitter within ±20%), and the delivery becomes `dead` after the last retry. A 410 disables the subscription and stops delivery. A 2xx stops retries. |
+| S4-9 | Delivery state and logs never contain the receiver's response body or the secret. Shutdown stops the dispatcher and waits for in-flight attempts. |
 
 ## 4. Sabotage checks (each must make a test fail)
 - Drop the request-hash comparison (a different body replays the first response).
@@ -98,7 +98,7 @@ New variables, validated at start-up:
 - Check-then-insert instead of the atomic claim (S4-3 fails under concurrency).
 - Store failed responses (a retry after a failure replays the error).
 - Sign without the timestamp, or over a re-serialised body.
-- Skip the receiver's timestamp tolerance or its `webhook-id` dedupe.
+- Skip the timestamp tolerance or the `webhook-id` duplicate check in `verifyWebhook`.
 - Retry after a 410, or never mark a delivery `dead`.
 
 Constant-time comparison is verified by reading, as in S2 (timing isn't test-detectable).
@@ -107,7 +107,7 @@ Constant-time comparison is verified by reading, as in S2 (timing isn't test-det
 1. **Only successful creates are stored;** failures release the key. Replaying a stored error would force a new key, and a new key is how duplicates happen.
 2. **The idempotency key also travels upstream as an external ID,** so the case system dedupes the write itself. That closes the gap the platform alone can't: a create that succeeded upstream but timed out on the way back. It also makes the comment write safe to retry automatically. A provider without external IDs would need a lookup-before-retry instead (documented).
 3. **An `in_flight` key is abandoned after 60 seconds,** so a crash mid-request can't block the key for 24 hours.
-4. **Webhook secrets live in environment variables named by the subscription,** several per subscription for rotation; the database holds only the names.
+4. **Webhook secrets live in environment variables named by the subscription,** one per subscription; the database holds only the name. Rotation is deferred.
 5. **A fresh signature per attempt** (Standard Webhooks signs the attempt's timestamp), over bytes serialised once at enqueue.
-6. **The reference receiver answers 204 to a duplicate** rather than an error, so a sender that missed the first 2xx stops retrying.
+6. **A duplicate `webhook-id` should be acknowledged with a 2xx,** not an error, so a sender that missed the first 2xx stops retrying (documented on `verifyWebhook`).
 7. **No breaker on webhook delivery:** the retry schedule already spaces attempts out, and one receiver's outage mustn't pause the others.
