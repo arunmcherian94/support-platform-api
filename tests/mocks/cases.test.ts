@@ -306,3 +306,140 @@ describe('case system reset', () => {
     expect(record).toMatchObject({ IsEscalated: false, version: 1 });
   });
 });
+
+describe('case system lists, sorting and keyset (S3 mock part)', () => {
+  const BY_OPENED = [
+    'CS-10235',
+    'CS-10231',
+    'CS-10234',
+    'CS-10236',
+    'CS-10237',
+    'CS-10238',
+    'CS-10241',
+    'CS-10239',
+    'CS-10240',
+    'CS-10233',
+    'CS-10232',
+  ];
+  const BY_PRIORITY = [
+    'CS-10231',
+    'CS-10232',
+    'CS-10233',
+    'CS-10235',
+    'CS-10236',
+    'CS-10237',
+    'CS-10238',
+    'CS-10239',
+    'CS-10240',
+    'CS-10241',
+    'CS-10234',
+  ];
+
+  it('accepts a comma-separated account list and still a single account', async () => {
+    const list = await getPage('/cases?accountId=ACC-012,ACC-030&pageSize=50');
+    expect(ids(list)).toEqual(['CS-10236', 'CS-10239']);
+    const single = await getPage('/cases?accountId=ACC-012&pageSize=50');
+    expect(ids(single)).toEqual(['CS-10236']);
+  });
+
+  it('sorts by openedAt ascending with id as the tie-break', async () => {
+    expect(ids(await getPage('/cases?sort=openedAt&pageSize=50'))).toEqual(BY_OPENED);
+  });
+
+  it('sorts by -openedAt descending with id still ascending on ties', async () => {
+    const expected = [
+      'CS-10232',
+      'CS-10233',
+      'CS-10240',
+      'CS-10239',
+      'CS-10236',
+      'CS-10237',
+      'CS-10238',
+      'CS-10241',
+      'CS-10234',
+      'CS-10231',
+      'CS-10235',
+    ];
+    expect(ids(await getPage('/cases?sort=-openedAt&pageSize=50'))).toEqual(expected);
+  });
+
+  it('sorts by priority and -priority with id tie-break', async () => {
+    expect(ids(await getPage('/cases?sort=priority&pageSize=50'))).toEqual(BY_PRIORITY);
+    const desc = ids(await getPage('/cases?sort=-priority&pageSize=50'));
+    expect(desc[0]).toBe('CS-10234');
+    expect(desc.slice(1)).toEqual(BY_PRIORITY.slice(0, 10));
+  });
+
+  it('keeps id order without sort', async () => {
+    const all = ids(await getPage('/cases?pageSize=50'));
+    expect(all).toEqual([...all].sort());
+  });
+
+  it('returns only records strictly after the keyset position, ascending', async () => {
+    const page = await getPage(
+      '/cases?sort=openedAt&afterValue=2026-11-01T09:00:00Z&afterId=CS-10237&pageSize=50',
+    );
+    expect(ids(page)).toEqual(BY_OPENED.slice(BY_OPENED.indexOf('CS-10237') + 1));
+  });
+
+  it('returns only records strictly after the keyset position, descending', async () => {
+    const page = await getPage(
+      '/cases?sort=-openedAt&afterValue=2026-11-01T09:00:00Z&afterId=CS-10237&pageSize=50',
+    );
+    // Ties after 10237 by id ascending, then everything older.
+    expect(ids(page)).toEqual(['CS-10238', 'CS-10241', 'CS-10234', 'CS-10231', 'CS-10235']);
+  });
+
+  it('applies the keyset to priority sorts', async () => {
+    const page = await getPage('/cases?sort=priority&afterValue=P1&afterId=CS-10240&pageSize=50');
+    expect(ids(page)).toEqual(['CS-10241', 'CS-10234']);
+  });
+
+  it.each([
+    'afterValue=2026-11-01T09:00:00Z',
+    'afterId=CS-10237',
+    'sort=openedAt&afterValue=2026-11-01T09:00:00Z',
+    'afterValue=2026-11-01T09:00:00Z&afterId=CS-10237',
+    'sort=openedAt&afterValue=yesterday&afterId=CS-10237',
+    'sort=priority&afterValue=P9&afterId=CS-10237',
+    'sort=bogus',
+  ])('rejects malformed ordering parameters (%s) with 400 MALFORMED_QUERY', async (query) => {
+    const res = await fetch(`${h.url}/cases?${query}`);
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject([{ errorCode: 'MALFORMED_QUERY' }]);
+  });
+
+  it('carries sort and keyset in nextRecordsUrl so later pages stay consistent', async () => {
+    const seen: string[] = [];
+    let page = await getPage(
+      '/cases?sort=-openedAt&afterValue=2026-11-04T13:00:00Z&afterId=CS-10232&pageSize=3',
+    );
+    seen.push(...ids(page));
+    expect(page.nextRecordsUrl).toBeDefined();
+    while (page.nextRecordsUrl !== undefined) {
+      page = await getPage(page.nextRecordsUrl);
+      seen.push(...ids(page));
+    }
+    expect(seen).toEqual([
+      'CS-10233',
+      'CS-10240',
+      'CS-10239',
+      'CS-10236',
+      'CS-10237',
+      'CS-10238',
+      'CS-10241',
+      'CS-10234',
+      'CS-10231',
+      'CS-10235',
+    ]);
+  });
+
+  it('still rejects a forged locator with an invalid sort', async () => {
+    const forged = Buffer.from(
+      JSON.stringify({ offset: 0, filters: {}, pageSize: 5, sort: 'drop' }),
+      'utf8',
+    ).toString('base64url');
+    const res = await fetch(`${h.url}/cases/query/${forged}`);
+    expect(res.status).toBe(400);
+  });
+});

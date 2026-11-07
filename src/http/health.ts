@@ -1,5 +1,6 @@
 import type { RequestHandler } from 'express';
 import type { DatabaseSync } from 'node:sqlite';
+import type { Upstreams } from '../adapters/index.js';
 
 type CheckStatus = 'ok' | 'degraded' | 'unavailable';
 
@@ -13,13 +14,16 @@ function databaseStatus(db: DatabaseSync): CheckStatus {
 }
 
 /**
- * Liveness and readiness (openapi.yaml `getLiveness`, `getReadiness`).
- * Readiness depends on the database only for now; the read path adds the
- * entitlement snapshot as a required check and reports the upstreams.
+ * Liveness and readiness (openapi.yaml `getLiveness`, `getReadiness`; S3 §2.7).
+ * Readiness fails only on the database or an unusable entitlement snapshot.
+ * The case system and warehouse are reported from breaker state, never
+ * probed, and never fail readiness: an upstream outage must not take every
+ * replica out of rotation.
  */
 export function healthHandlers(
   db: DatabaseSync,
   isDraining: () => boolean = () => false,
+  upstreams?: Upstreams,
 ): Record<string, RequestHandler> {
   return {
     getLiveness: (_req, res) => {
@@ -27,18 +31,19 @@ export function healthHandlers(
     },
     getReadiness: (_req, res) => {
       const database = databaseStatus(db);
+      const entitlementSnapshot: CheckStatus =
+        upstreams?.entitlement.current().usable === true ? 'ok' : 'unavailable';
       // Shutting down: report not-ready so load balancers stop routing here first.
-      const ready = database === 'ok' && !isDraining();
+      const ready = database === 'ok' && entitlementSnapshot === 'ok' && !isDraining();
       res.status(ready ? 200 : 503).json({
         status: ready ? 'ok' : 'unavailable',
         checks: {
           database,
-          // Not wired yet: reported, not required (read path).
-          entitlementSnapshot: 'unavailable',
-          caseSystem: 'unavailable',
-          usageWarehouse: 'unavailable',
+          entitlementSnapshot,
+          caseSystem: upstreams?.clients.cases.health() ?? 'unavailable',
+          usageWarehouse: upstreams?.clients.warehouse.health() ?? 'unavailable',
         },
-        unmatchedAccountIds: [],
+        unmatchedAccountIds: upstreams?.entitlement.unmatchedAccountIds() ?? [],
       });
     },
   };
