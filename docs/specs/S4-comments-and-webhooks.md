@@ -21,22 +21,19 @@ The contract already fixes the outcomes (ADR-0005): replay on the same key and b
   - different request hash: 422 `idempotency-key-reused`, whatever the row's state;
   - `in_flight`: 409 `request-in-progress`. An `in_flight` row older than 60 seconds (well past the 10 s request budget) is treated as abandoned by a crashed request and may be taken over;
   - `completed`: replay the stored status, body and `Location`, with `Idempotent-Replayed: true`. The case system is not called.
-- **What is stored:** only a successful create (201). Any failure deletes the `in_flight` row, so the client may retry with the same key. That is safe because of the next point.
-- **The write itself is idempotent upstream.** The platform passes a derived external ID with the comment: SHA-256 of `(client_id, sub, caseId, key)`, truncated. The case system dedupes on it, as a Salesforce upsert on an external-ID field does. So:
-  - a request that timed out after the case system created the comment can be retried with the same key, and the case system returns the existing comment instead of creating a second;
-  - the comment write may therefore be retried automatically (decision 24 allows retries of idempotent writes), with the case-system policy from S3.
-
-  The mock case system gains this: `POST /cases/{id}/comments` accepts `externalId` and, for one it has seen on that case, returns the existing comment.
+- **What is stored:** only a successful create (201). Any failure deletes the `in_flight` row, so the client may retry with the same key.
+- **The comment write is not retried automatically.** A POST to the case system isn't idempotent, so a retry could duplicate it (decision 24). It runs with the case-system timeout and breaker, as a single attempt.
+- **The remaining gap, stated plainly:** if the case system creates the comment but its response is lost (a timeout), the key is released and a client retry creates a second comment. The platform can't tell whether the create landed. Closing that needs the case system's help (an external-ID upsert, or a lookup before retrying); most case systems don't offer it for comments, so it is documented, not built.
 - **Missing header:** 400 `idempotency-key-required` (the validator's generic `validation-failed` is mapped for this header).
 - **Author** is the token's `sub`: for agents, the user the agent acts for.
 - **Upstream outcomes:** 201 → 201 with `Location: /v1/cases/{caseId}/comments/{commentId}`; a 404 → 404 `not-found`; other failures map as in S3 §2.3. The platform adds no rule on closed cases (decision 20).
 - **Expiry:** an expired key is ignored on read and replaced on the next claim, so correctness never depends on cleanup. A periodic sweep (`DELETE … WHERE expires_at < now`, served by the `expires_at` index) is housekeeping, deferred.
 - **Audit** of writes, with `sub` and `act.sub`, is built once in Part C, where the audit log is designed for tool calls.
 
-### 2.2 Webhook subscriptions
-- Seeded at start-up from `config/webhook-subscriptions.json` (id, URL, event types, secret references), upserted into `webhook_subscriptions`. There is no subscription API (deferred, CLAUDE.md §4).
-- **Secrets are referenced, never stored:** `secret_ref` names the environment variable that holds the subscription's Standard Webhooks secret (`whsec_` + base64). Start-up stops with a config error if it is missing. `.env.example` carries an obviously fake development secret.
-- **One secret per subscription.** Rotation is deferred; the signature header is already a list, so adding a second secret later is additive.
+### 2.2 Webhook subscription
+- **One subscription, from the environment:** `WEBHOOK_URL` and `WEBHOOK_SECRET` (a Standard Webhooks secret, `whsec_` + base64). With no URL there is no subscription and nothing is enqueued. Start-up upserts it into `webhook_subscriptions` (event type `case.escalated`) and stops with a config error if the URL is set without a valid secret. `.env.example` carries an obviously fake development secret.
+- **The secret stays in the environment:** the table's `secret_ref` holds the variable's name, never the secret.
+- One subscription per deployment is enough here; a subscription API and secret rotation are deferred (the signature header is already a list, so rotation is additive).
 
 ### 2.3 Enqueueing events
 - `enqueueEvent(db, type, data)` builds the Standard Webhooks envelope `{ type, timestamp, data }`, serialises it **once**, and inserts one `webhook_deliveries` row per active subscription to that event type, inside the caller's transaction. Escalate (Part C) calls it in the same transaction as its audit record, so an event is never lost or sent for a change that didn't happen.
@@ -67,9 +64,7 @@ The contract already fixes the outcomes (ADR-0005): replay on the same key and b
 - The tests run it inside a small test receiver (raw-body parsing, then `verifyWebhook`), against which the dispatcher delivers. No runnable receiver app ships (the brief asks for a sender or a receiver).
 
 ### 2.6 Config
-New variables, validated at start-up:
-- `WEBHOOK_DISPATCH_INTERVAL_MS` (default 1000);
-- the secret variable named by each subscription (e.g. `WEBHOOK_SECRET_LOCAL`).
+New variables, validated at start-up: `WEBHOOK_URL` (optional), `WEBHOOK_SECRET` (required with a URL) and `WEBHOOK_DISPATCH_INTERVAL_MS` (default 1000).
 
 **Out of scope:**
 - escalate and the `case.escalated` payload's content (Part C);
@@ -86,7 +81,7 @@ New variables, validated at start-up:
 | S4-2 | The same key with a different body gets 422 `idempotency-key-reused`. A missing key gets 400 `idempotency-key-required`. |
 | S4-3 | Two concurrent requests with the same key: exactly one reaches the case system; the other gets 409 `request-in-progress` (or, if it arrives after completion, the replay). |
 | S4-4 | Keys are scoped: the same key from another client, another user or another case is a new request. An expired key is a new request. |
-| S4-5 | A failed create stores nothing, so a retry with the same key proceeds. If the case system created the comment but the response was lost, the retry returns that comment and creates no second one (external-ID dedupe, proven against the mock). |
+| S4-5 | A failed create stores nothing, so a retry with the same key proceeds. The comment write is attempted once (never retried automatically). |
 | S4-6 | An enqueued event is delivered to each matching active subscription with `webhook-id`, `webhook-timestamp` and `webhook-signature`, and the bytes received equal the stored payload. |
 | S4-7 | `verifyWebhook` accepts a real delivery from the dispatcher and rejects a tampered body, the wrong secret, a timestamp outside 5 minutes, and flags a replayed `webhook-id` as a duplicate. |
 | S4-8 | A failing receiver gets retries on the documented schedule (checked on the injected clock, jitter within ±20%), and the delivery becomes `dead` after the last retry. A 410 disables the subscription and stops delivery. A 2xx stops retries. |
@@ -97,6 +92,7 @@ New variables, validated at start-up:
 - Leave the client out of the key scope.
 - Check-then-insert instead of the atomic claim (S4-3 fails under concurrency).
 - Store failed responses (a retry after a failure replays the error).
+- Retry the comment write automatically.
 - Sign without the timestamp, or over a re-serialised body.
 - Skip the timestamp tolerance or the `webhook-id` duplicate check in `verifyWebhook`.
 - Retry after a 410, or never mark a delivery `dead`.
@@ -105,9 +101,9 @@ Constant-time comparison is verified by reading, as in S2 (timing isn't test-det
 
 ## 5. Decisions taken in this spec (to confirm by merging)
 1. **Only successful creates are stored;** failures release the key. Replaying a stored error would force a new key, and a new key is how duplicates happen.
-2. **The idempotency key also travels upstream as an external ID,** so the case system dedupes the write itself. That closes the gap the platform alone can't: a create that succeeded upstream but timed out on the way back. It also makes the comment write safe to retry automatically. A provider without external IDs would need a lookup-before-retry instead (documented).
+2. **No upstream dedupe:** the comment write is a single attempt, and a create that landed upstream but timed out can be duplicated by a client retry. Closing that gap is the case system's job (external-ID upsert), which comment APIs rarely offer; documented, not built.
 3. **An `in_flight` key is abandoned after 60 seconds,** so a crash mid-request can't block the key for 24 hours.
-4. **Webhook secrets live in environment variables named by the subscription,** one per subscription; the database holds only the name. Rotation is deferred.
+4. **One webhook subscription, defined by environment variables;** the database holds the secret's variable name, never the secret. Rotation and a subscription API are deferred.
 5. **A fresh signature per attempt** (Standard Webhooks signs the attempt's timestamp), over bytes serialised once at enqueue.
 6. **A duplicate `webhook-id` should be acknowledged with a 2xx,** not an error, so a sender that missed the first 2xx stops retrying (documented on `verifyWebhook`).
 7. **No breaker on webhook delivery:** the retry schedule already spaces attempts out, and one receiver's outage mustn't pause the others.
