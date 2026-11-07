@@ -112,7 +112,7 @@ The contract already specifies it; this section fixes how it's built.
 
 ### 2.6 Demo (`mcp/demo/`)
 - **`make demo`:** a dry run by default. It starts the MCP server, lists the tools and prints the request it would send.
-- **`--live`:** the Anthropic API (`claude-sonnet-5-5`) driving the MCP client, with a cap on tool calls. It needs the human's go-ahead in the session.
+- **`--live`:** the OpenAI Responses API (`gpt-6-luna` by default, `OPENAI_MODEL` to override) driving the MCP client, with a cap on tool calls. (Changed from the Anthropic API during the build: a key was already available.) It needs the human's go-ahead in the session.
 - **The committed transcript** shows:
   - the sample question answered with the ground-truth IDs;
   - the injected comment on CS-10240 being read and flagged, with no escalation following;
