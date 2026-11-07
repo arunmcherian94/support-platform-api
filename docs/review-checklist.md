@@ -67,3 +67,15 @@ Each row: the rule broken on purpose, and the test that failed. Reverted after e
 | Await the first entitlement load before listening | `tests/http/upstreams.test.ts` (start-up under 1 s with a slow ERP) | 5a review |
 | Keep the JSON parse error as the cause of `bad_response` | `tests/adapters/cases.test.ts` (no body fragment in the logs) | 5a review |
 | Retry with no backoff between attempts | `tests/adapters/http.test.ts` (waits the jittered backoff) | 5a review |
+| Shift the renewal window by a day (+1) | `tests/http/list-cases.test.ts` (S3-1, S3-9) and `tests/domain/case-search.test.ts` (6 tests) | 5b |
+| Shift the renewal window by a day (−1) | `tests/domain/case-search.test.ts` (89-day boundary) only: the fixture's 89/91 near-misses can't catch it at N=90 | 5b |
+| Let past renewals match | `tests/domain/case-search.test.ts` (2 tests) only: no fixture account has a past renewal | 5b |
+| Leave the filters out of the cursor fingerprint | `tests/domain/cursor.test.ts` (9 tests), `tests/http/list-cases.test.ts` (changed filter or sort) | 5b |
+| Drop the account list from the case-system query | `tests/http/list-cases.test.ts` (5 tests) | 5b |
+| Return ARR without `finance:read` | `tests/http/get-customer.test.ts` (no ARR key or amount without the scope) | 5b |
+| Treat the warehouse as required (503 instead of degraded) | `tests/http/get-customer.test.ts` (2 tests) | 5b |
+| Return the oldest 50 comments, or newest first | `tests/http/get-case.test.ts` (2 tests) | 5b |
+| Read a coerced query integer as absent | `tests/http/list-cases.test.ts` (S3-5), `tests/http/query-helpers.test.ts` | 5b |
+| Make `openedBefore` inclusive (enforced in the case-system query; a real adapter must emit `<`) | `tests/http/list-cases.test.ts` (S3-10 exact-instant test) | 5b review |
+| Return an empty page instead of 400 above 500 accounts | `tests/http/list-cases-limits.test.ts` | 5b review |
+| Keep the feed's own status when the export is too old | `tests/domain/account.test.ts`, `tests/http/list-cases.test.ts` (too old) | 5b review |
