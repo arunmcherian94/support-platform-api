@@ -12,6 +12,8 @@ describe('config (S2-9)', () => {
       issuerUrl: 'http://127.0.0.1:8080/dev',
       audience: 'support-platform-api',
       rateLimit: { clientPerMinute: 100, agentPerMinute: 30 },
+      requestBudgetMs: 10_000,
+      entitlementRefreshSeconds: 900,
     });
   });
 
@@ -25,6 +27,8 @@ describe('config (S2-9)', () => {
     [{ LOG_LEVEL: 'loud' }, /LOG_LEVEL must be one of/],
     [{ MOCKS_URL: 'nope' }, /MOCKS_URL must be an http\(s\) URL/],
     [{ NOW: 'yesterday' }, /NOW must be an RFC 3339 timestamp/],
+    [{ REQUEST_BUDGET_MS: '50' }, /REQUEST_BUDGET_MS must be between/],
+    [{ ENTITLEMENT_REFRESH_SECONDS: '0' }, /ENTITLEMENT_REFRESH_SECONDS must be between/],
     [{ NODE_ENV: 'production' }, /ISSUER_URL is required when NODE_ENV=production/],
     [{ NODE_ENV: 'production', ISSUER_URL: 'https://idp.example' }, /AUDIENCE is required/],
   ])('rejects %j naming the variable', (env, message) => {

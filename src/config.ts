@@ -17,6 +17,10 @@ export interface Config {
   rateLimit: { clientPerMinute: number; agentPerMinute: number };
   /** On shutdown, how long readiness reports 503 before the listener closes. */
   shutdownReadinessDelayMs: number;
+  /** Total time for one request's upstream calls, retries included (S3 §2.3). */
+  requestBudgetMs: number;
+  /** How often the entitlement feeds are polled (ADR-0003). */
+  entitlementRefreshSeconds: number;
 }
 
 export class ConfigError extends Error {
@@ -114,6 +118,8 @@ export function loadConfig(env: Env = process.env): Config {
       warehouse: url(env, 'WAREHOUSE_URL', mocks),
     },
     shutdownReadinessDelayMs: integer(env, 'SHUTDOWN_READINESS_DELAY_MS', 0, 0, 60_000),
+    requestBudgetMs: integer(env, 'REQUEST_BUDGET_MS', 10_000, 100, 120_000),
+    entitlementRefreshSeconds: integer(env, 'ENTITLEMENT_REFRESH_SECONDS', 900, 1, 86_400),
     rateLimit: {
       clientPerMinute: integer(env, 'RATE_LIMIT_CLIENT_PER_MINUTE', 100, 1, 100_000),
       agentPerMinute: integer(env, 'RATE_LIMIT_AGENT_PER_MINUTE', 30, 1, 100_000),
