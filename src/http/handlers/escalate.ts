@@ -92,13 +92,14 @@ export function escalateCaseHandler(deps: EscalateDeps): RequestHandler {
       }
 
       if (ifMatch !== record.etag) {
-        refuse(stale());
+        refuse(stale(record.etag));
         return;
       }
 
       const entitlement = deps.upstreams.entitlement;
+      // One read of the snapshot: the decision and the response see the same tier.
+      const state = entitlement.current();
       const verdict = escalationVerdict(record, (): TierLookup => {
-        const state = entitlement.current();
         if (!state.usable) return 'stale';
         return state.snapshot.accounts.get(record.accountId)?.supportTier ?? null;
       });
@@ -176,7 +177,6 @@ export function escalateCaseHandler(deps: EscalateDeps): RequestHandler {
         deps.logger.error({ err: error, caseId }, 'escalation audit and event not recorded');
       }
 
-      const state = entitlement.current();
       res.set('ETag', written.etag).json({
         id: record.id,
         accountId: record.accountId,
@@ -193,10 +193,11 @@ export function escalateCaseHandler(deps: EscalateDeps): RequestHandler {
   };
 }
 
-function stale(): AppError {
+function stale(currentEtag?: string): AppError {
   return new AppError(
     'precondition-failed',
     'The case changed since you read it. Fetch it again and retry with the new ETag.',
+    currentEtag === undefined ? {} : { headers: { ETag: currentEtag } },
   );
 }
 

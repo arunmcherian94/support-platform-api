@@ -41,9 +41,9 @@ describe('escalation matrix', () => {
     expect(tiers.map((t) => problemOf(priority, t))).toEqual(expected);
   });
 
-  it('P1 and P2 never look up the tier', () => {
+  it.each(['P1', 'P2'] as const)('%s never looks up the tier', (priority) => {
     let looked = false;
-    escalationVerdict(base, () => {
+    escalationVerdict({ ...base, priority }, () => {
       looked = true;
       return 'stale';
     });

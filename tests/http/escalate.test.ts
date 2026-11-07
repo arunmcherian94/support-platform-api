@@ -224,9 +224,67 @@ describe('escalate (S5-1)', () => {
     expect(await problemType(res)).toBe('insufficient-scope');
   });
 
-  it('400 when reason is other without a note', async () => {
+  it('400 validation-failed when reason is other without a note', async () => {
     await start();
     const res = await escalate('CS-10231', await etagOf('CS-10231'), { body: { reason: 'other' } });
     expect(res.status).toBe(400);
+    expect(await problemType(res)).toBe('validation-failed');
+  });
+
+  it('404 for an unknown case', async () => {
+    await start();
+    const res = await escalate('CS-99999', '"x"');
+    expect(res.status).toBe(404);
+    expect(await problemType(res)).toBe('not-found');
+  });
+
+  it('412 when the case changes between the read and the write, with the current ETag', async () => {
+    await start();
+    const cases = running?.upstreams.cases;
+    if (cases === undefined) throw new Error('no upstreams');
+    const realGet = cases.get.bind(cases);
+    const before = await etagOf('CS-10231');
+    // The read sees the old version; then someone else writes before our PATCH.
+    cases.get = async (id) => {
+      const record = await realGet(id);
+      await fetch(`${mocks?.url ?? ''}/cases/${id}/comments`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ body: 'race', author: 'other' }),
+      });
+      return record;
+    };
+    const res = await escalate('CS-10231', before);
+    expect(res.status).toBe(412);
+    expect(await problemType(res)).toBe('precondition-failed');
+    expect(audits().map((a) => a.outcome)).toEqual(['precondition-failed']);
+    expect(deliveries()).toHaveLength(0);
+  });
+
+  it('412 from the ETag check carries the current ETag', async () => {
+    await start();
+    const res = await escalate('CS-10231', '"stale"');
+    expect(res.status).toBe(412);
+    expect(res.headers.get('etag')).toBe(await etagOf('CS-10231'));
+  });
+
+  it('audit row and event commit together: a failed enqueue leaves neither', async () => {
+    await start();
+    running?.db.exec('DROP TABLE webhook_deliveries');
+    const res = await escalate('CS-10231', await etagOf('CS-10231'));
+    // The case system accepted the write, so the answer stays 200 (event loss is
+    // logged; the outbox in pass 2 closes this gap).
+    expect(res.status).toBe(200);
+    expect(audits()).toEqual([]);
+  });
+
+  it('P1 proceeds with stale entitlement data; the account is null', async () => {
+    await start();
+    const entitlement = running?.upstreams.entitlement;
+    if (entitlement === undefined) throw new Error('no upstreams');
+    entitlement.current = () => ({ usable: false, reason: 'too_old' });
+    const res = await escalate('CS-10231', await etagOf('CS-10231'));
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { account: unknown }).account).toBeNull();
   });
 });

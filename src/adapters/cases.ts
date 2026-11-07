@@ -185,9 +185,14 @@ export function createCaseSystem(client: UpstreamClient): CaseSystem {
         retryable: false,
       });
       const match = /^"(\d+)"$/.exec(response.headers.get('etag') ?? '');
-      if (match?.[1] === undefined) throw bad('ETag is not a version');
-      const version = Number(match[1]);
-      return { version, etag: etagFor(caseId, version) };
+      if (match?.[1] !== undefined) {
+        const version = Number(match[1]);
+        return { version, etag: etagFor(caseId, version) };
+      }
+      // The write succeeded; only its version is missing. Read it rather than
+      // failing a write that went through.
+      const fresh = await this.get(caseId);
+      return { version: fresh.version, etag: fresh.etag };
     },
     async search(query: CaseQuery): Promise<CasePage> {
       // Only the first upstream page is used; keyset paging replaces nextRecordsUrl.
