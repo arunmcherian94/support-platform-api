@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help install typecheck lint test check mocks run api postman mcp
+.PHONY: help install typecheck lint test check mocks run api postman mcp approve
 
 # Fixture clock (S1 §4). Override with NOW=... on the command line.
 NOW ?= 2026-11-06T12:00:00Z
@@ -35,3 +35,6 @@ postman: ## Postman functional and regression checks (expects make run)
 
 mcp: ## MCP server over stdio for USER_TOKEN's user (expects make run)
 	NOW=$(NOW) npx tsx mcp/server/main.ts
+
+approve: ## Approve a pending escalation as the human: make approve ID=pa_... [REJECT=1]
+	NOW=$(NOW) npx tsx scripts/approve.ts $(ID)
