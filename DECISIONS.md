@@ -78,4 +78,8 @@ _Filled in as items are deferred; the final list mirrors the traceability matrix
   - add `GET /v1/customers?q=` returning ranked candidates (exact alias, name prefix, fuzzy name), each with its match type, for the user or agent to confirm.
 
   Fuzzy matching is only ever for **search**, never for **joins** between systems: a wrong join silently attaches one customer's tier and ARR to another (ADR-0003).
-- **Comment paging.** `GET /v1/cases/{caseId}` returns the newest 50 comments plus `commentCount`. A `GET /v1/cases/{caseId}/comments?cursor=` sub-collection is an additive change when a consumer needs older comments.
+- **Rate limits per user, not just per client and agent.** Buckets are keyed by client and by agent, so every user of a client shares one bucket, and an agent's bucket spans all its users. To revisit in Part C with the agent's delegated identity (e.g. agent + user keys).
+- **Distributed rate limiting.** Buckets are in memory, per instance: N replicas allow N times the quota. In production the gateway or a shared store (Redis) enforces the limit; this service keeps per-agent limits as defence in depth.
+- **JWKS stale-on-error.** Keys are cached for an hour; an identity provider outage longer than that gives 503. With more time, keep the last good key set for a bounded period beyond that.
+- **Access-token hardening for a real IdP:** require `typ: at+jwt` (RFC 9068) and a maximum token age.
+- - **Comment paging.** `GET /v1/cases/{caseId}` returns the newest 50 comments plus `commentCount`. A `GET /v1/cases/{caseId}/comments?cursor=` sub-collection is an additive change when a consumer needs older comments.

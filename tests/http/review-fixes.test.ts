@@ -2,7 +2,13 @@ import { randomUUID } from 'node:crypto';
 import { afterEach, describe, expect, it } from 'vitest';
 import { AppError } from '../../src/http/problems.js';
 import { startServer } from '../../src/server.js';
-import { captureLogs, startTestApp, testConfig, type TestApp } from './helpers.js';
+import {
+  captureLogs,
+  startServerWithAuth,
+  startTestApp,
+  testConfig,
+  type TestApp,
+} from './helpers.js';
 
 let app: TestApp | undefined;
 afterEach(async () => {
@@ -116,7 +122,7 @@ describe('server lifecycle', () => {
     const reached = new Promise<void>((resolve) => {
       entered = resolve;
     });
-    const running = await startServer(testConfig({ PORT: '0' }), logs.logger, {
+    const { running, auth } = await startServerWithAuth(logs.logger, {
       handlers: {
         getCase: async () => {
           entered();
@@ -124,7 +130,9 @@ describe('server lifecycle', () => {
         },
       },
     });
-    const hung = fetch(`${running.url}/v1/cases/CS-10231`).catch((error: unknown) => error);
+    const hung = fetch(`${running.url}/v1/cases/CS-10231`, { headers: auth }).catch(
+      (error: unknown) => error,
+    );
     await reached;
     await running.shutdown(100);
     expect(await hung).toBeInstanceOf(Error);

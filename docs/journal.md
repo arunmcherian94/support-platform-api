@@ -175,3 +175,21 @@ The store and run slices were built in parallel (sonnet, worktrees with a verifi
 - A Spectral rule keeps new schemas closed.
 - A runtime test proves an extra field (ARR on a case, or nested in the account summary) becomes a 500 in strict mode.
 - Clients remain tolerant readers, so additions stay non-breaking.
+
+## 2026-11-06 23:55 IST — PR 4b: auth and rate limits
+
+**What was done.** S2-5, S2-6, S2-7 and S2-12:
+- the dev token issuer, mounted only with `DEV_ISSUER=true` and refused in production;
+- token verification against the issuer's JWKS URL (RS256 pinned; iss, aud, exp and nbf checked on the injected clock);
+- each operation's scopes taken from `openapi.yaml`;
+- per-client and per-agent token buckets with `RateLimit` headers;
+- 503 when the identity provider is unreachable.
+
+The two slices (auth, rate limits) ran in parallel on opus in worktrees. Integration and the end-to-end tests were done in session.
+
+**What changed and why.**
+- **The validator rebuilds errors thrown by a security handler,** losing the problem type and `WWW-Authenticate`, and turns any status other than 401/403 into a 500. So the handler leaves its problem on `res.locals`, and the error handler prefers it.
+- **Adding `HS256` or `none` to the allowed algorithms isn't caught by our tests,** because jose refuses those tokens itself. We still pin RS256; dropping the pin is caught.
+- **The slices paused** when the permission system declined their first writes. They resumed after the human approved, with explicit worktree paths.
+
+**Open questions.** None.

@@ -4,6 +4,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
 import type { Clock } from '../clock.js';
 import type { Config } from '../config.js';
+import type { SecurityHandler } from '../auth/types.js';
 import { correlationMiddleware } from '../observability/context.js';
 import { requestLogMiddleware, type Logger } from '../observability/logger.js';
 import { healthHandlers } from './health.js';
@@ -20,6 +21,10 @@ export interface AppDeps {
   logger: Logger;
   db: DatabaseSync;
   handlers?: OperationHandlers;
+  /** Verifies tokens and scopes for the contract's `oauth2` scheme (PR 4b). */
+  securityHandler?: SecurityHandler;
+  /** Middleware run after authentication, before handlers (e.g. rate limiting). */
+  afterAuth?: RequestHandler[];
   /** True once shutdown has started; readiness then reports 503. */
   isDraining?: () => boolean;
   /** Routes mounted before the validator (e.g. the dev token issuer). */
@@ -66,11 +71,15 @@ export function createApp(deps: AppDeps): Express {
                 );
               },
             },
-      validateSecurity: false, // enabled with token verification (PR 4b)
+      // Scopes come from each operation's `security` entry in openapi.yaml.
+      validateSecurity:
+        deps.securityHandler === undefined ? false : { handlers: { oauth2: deps.securityHandler } },
       validateFormats: true,
       ajvFormats: { mode: 'full' },
     }),
   );
+
+  for (const middleware of deps.afterAuth ?? []) app.use(middleware);
 
   app.use((req, res, next) => {
     const operationId = (req as unknown as OpenApiRequest).openapi?.schema?.operationId;

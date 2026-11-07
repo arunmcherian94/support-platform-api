@@ -1,0 +1,28 @@
+{
+  "_comment": "DEV-ONLY clients for the local token issuer (DEV_ISSUER=true, refused in production). The secrets are deliberately fake and public; never reuse this file or these values outside local development and tests.",
+  "clients": [
+    {
+      "clientId": "support-console",
+      "secret": "dev-only-support-console-secret",
+      "sub": "jdoe",
+      "scopes": ["customers:read", "cases:read", "cases:comment", "cases:escalate"]
+    },
+    {
+      "clientId": "finance-app",
+      "secret": "dev-only-finance-app-secret",
+      "sub": "fbaker",
+      "scopes": ["customers:read", "cases:read", "finance:read"]
+    },
+    {
+      "clientId": "ipaas-flow",
+      "secret": "dev-only-ipaas-flow-secret",
+      "scopes": ["cases:read"]
+    },
+    {
+      "clientId": "support-copilot",
+      "secret": "dev-only-support-copilot-secret",
+      "sub": "jdoe",
+      "scopes": ["customers:read", "cases:read", "cases:comment", "cases:escalate"]
+    }
+  ]
+}

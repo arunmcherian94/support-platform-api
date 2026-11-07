@@ -83,6 +83,10 @@ export function loadConfig(env: Env = process.env): Config {
   if (now !== undefined && now !== '' && Number.isNaN(Date.parse(now))) {
     throw new ConfigError('NOW', `must be an RFC 3339 timestamp (got "${now}")`);
   }
+  if (devIssuer && port === 0 && read(env, 'ISSUER_URL', '') === '') {
+    // The default issuer URL embeds the port; with an OS-chosen port it can't be known.
+    throw new ConfigError('ISSUER_URL', 'is required when DEV_ISSUER=true and PORT=0');
+  }
   if (nodeEnv === 'production') {
     // No silent fallback to a local issuer: production must name its identity provider.
     for (const name of ['ISSUER_URL', 'AUDIENCE']) {
