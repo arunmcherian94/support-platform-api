@@ -100,9 +100,8 @@ interface Problem {
 }
 
 async function get(query: string): Promise<{ status: number; text: string }> {
-  // The validator requires reserved characters in query values to be percent-encoded.
-  const encoded = query.replaceAll(':', '%3A');
-  const res = await fetch(`${running?.url ?? ''}/v1/cases?${encoded}`, { headers: auth });
+  // Timestamps are sent with raw colons, as curl and Postman send them (allowReserved).
+  const res = await fetch(`${running?.url ?? ''}/v1/cases?${query}`, { headers: auth });
   return { status: res.status, text: await res.text() };
 }
 
