@@ -80,6 +80,34 @@ describe('search_cases (S5-4)', () => {
     expect(res.data).toMatchObject({ degraded: false, truncated: false, nextCursor: null });
   });
 
+  it('searches every state except closed when status is left out (the live demo searched ["open"] only)', async () => {
+    const harness = await startHarness();
+    h = harness;
+    const { tools } = await harness.client.listTools();
+    const description = tools.find((t) => t.name === 'search_cases')?.description ?? '';
+    expect(description).toContain('leave status out to get every case that is not closed');
+    const filters = {
+      priority: ['P1'],
+      tier: 'platinum',
+      minOpenHours: 48,
+      renewalWithinDays: 90,
+      limit: 20,
+    };
+    const ids = async (extra: Record<string, unknown>) =>
+      (
+        (await harness.call('search_cases', { ...filters, ...extra })).data.cases as {
+          caseId: string;
+        }[]
+      )
+        .map((c) => c.caseId)
+        .sort();
+    expect(await ids({})).toEqual(['CS-10231', 'CS-10233', 'CS-10236', 'CS-10239', 'CS-10240']);
+    // The live demo's filter: the in_progress P1 drops out.
+    expect(await ids({ status: ['open'] })).not.toContain('CS-10233');
+    // The closed P1 near-miss (CS-10235) only when closed cases are asked for.
+    expect(await ids({ status: ['closed'] })).toEqual(['CS-10235']);
+  });
+
   it('pages with its own cursor, keeping the hours cut-off of the first page', async () => {
     h = await startHarness();
     const filters = { priority: ['P1'], tier: 'platinum', minOpenHours: 48, renewalWithinDays: 90 };
