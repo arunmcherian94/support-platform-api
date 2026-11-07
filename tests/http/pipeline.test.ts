@@ -175,3 +175,19 @@ describe('correlation (S2-4)', () => {
     expect(typeof line?.latencyMs).toBe('number');
   });
 });
+
+describe('timestamps in the query (allowReserved)', () => {
+  it('accepts raw colons in openedBefore, as curl and Postman send them', async () => {
+    app = await startTestApp();
+    const res = await fetch(`${app.url}/v1/cases?openedBefore=2026-11-04T12:00:00Z`);
+    // No handler on this app, so a valid request ends as 500; validation failure would be 400.
+    expect(res.status).not.toBe(400);
+    expect(((await res.json()) as Problem).type).not.toMatch(/validation-failed$/);
+  });
+
+  it('still rejects a timestamp that is not RFC 3339', async () => {
+    app = await startTestApp();
+    const res = await fetch(`${app.url}/v1/cases?openedBefore=yesterday`);
+    expect(res.status).toBe(400);
+  });
+});
