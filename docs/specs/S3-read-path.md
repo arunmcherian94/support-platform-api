@@ -52,7 +52,7 @@ Each upstream gets its own policy: a timeout per attempt, retries, and a circuit
 
 | Outcome | Problem |
 |---|---|
-| Breaker open, or connection refused after retries | 503 `upstream-unavailable`, `Retry-After` = seconds until half-open |
+| Breaker open, or connection refused after retries | 503 `upstream-unavailable`, `Retry-After` = the half-open delay (10 s), an upper bound: cockatiel doesn't expose when the breaker opened |
 | Timeout after retries, or budget exhausted | 504 `upstream-timeout` |
 | 5xx after retries, unexpected 4xx, or an unparseable body | 502 `upstream-error` |
 
@@ -108,7 +108,7 @@ New variables, validated at start-up: `ENTITLEMENT_REFRESH_SECONDS` (≥ 1) and 
 | S3-4 | Warehouse down → 200, `usage: null`, `degraded: true`, warehouse source `unavailable`. ACC-015 (no usage rows) → `usage: null`, source `no_data`, `degraded: false`. |
 | S3-5 | Snapshot never loaded or CSV older than 48h → `getCustomer` gives 503 `entitlement-stale`; `listCases` with an entitlement filter gives 503 `entitlement-stale`; without one, 200 with `account: null` and `degraded: true`. A failed refresh keeps the last good snapshot and marks the source `stale`. |
 | S3-6 | Retries happen only for timeouts, network errors, 5xx and 429, at most 2 for cases and 1 for the warehouse, and only within the request budget; a 4xx is never retried. 429 waits for `Retry-After`, or gives 503 with `Retry-After` when that doesn't fit in the budget. Backoff is exponential with jitter. |
-| S3-7 | The breaker opens after 5 consecutive failures, goes half-open after 10s, and closes on a successful probe. Each transition is logged. 429s count toward opening it; other 4xx never do. A test drives open → half-open → closed on the injected clock. |
+| S3-7 | The breaker opens after 5 consecutive failures, goes half-open after 10s, and closes on a successful probe. Each transition is logged. 429s count toward opening it; other 4xx never do. A test drives open → half-open → closed with fake timers (cockatiel's breaker reads the system clock, not the injected one). |
 | S3-8 | Failures map to problems as in §2.3: breaker open → 503 with `Retry-After`; timeout → 504; 5xx or a bad body → 502. No upstream body reaches the response or the logs. |
 | S3-9 | Paging through the Copilot query with `limit=2` returns all five cases exactly once, in order. A cursor reused with a changed filter or sort, or a tampered cursor, gets 400 `invalid-cursor`. Ties on `openedAt` are ordered by case ID. Entitlement filters reach the mock as an account list (no full scan); more than 500 matching accounts gets 400. |
 | S3-10 | Filter boundaries hold: `openedBefore` is exclusive and `openedAfter` inclusive (a case opened exactly at the bound); `renewalWithinDays=89` includes ACC-012 and excludes ACC-015; a renewal in the past never matches. |
