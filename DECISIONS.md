@@ -85,4 +85,5 @@ _Filled in as items are deferred; the final list mirrors the traceability matrix
 - **Distributed rate limiting.** Buckets are in memory, per instance: N replicas allow N times the quota. In production the gateway or a shared store (Redis) enforces the limit; this service keeps per-agent limits as defence in depth.
 - **JWKS stale-on-error.** Keys are cached for an hour; an identity provider outage longer than that gives 503. With more time, keep the last good key set for a bounded period beyond that.
 - **Access-token hardening for a real IdP:** require `typ: at+jwt` (RFC 9068) and a maximum token age.
-- - **Comment paging.** `GET /v1/cases/{caseId}` returns the newest 50 comments plus `commentCount`. A `GET /v1/cases/{caseId}/comments?cursor=` sub-collection is an additive change when a consumer needs older comments.
+- **Comment paging.** `GET /v1/cases/{caseId}` returns the newest 50 comments plus `commentCount`. A `GET /v1/cases/{caseId}/comments?cursor=` sub-collection is an additive change when a consumer needs older comments.
+- **Postman collection in CI.** `postman/` runs by hand against `make run` (`make postman`); CI runs typecheck, lint and the Vitest suite, which already covers these behaviours. Running it in CI means starting mocks and API in the job, then Newman, with a JUnit report.
