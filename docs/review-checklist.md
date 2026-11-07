@@ -64,3 +64,6 @@ Each row: the rule broken on purpose, and the test that failed. Reverted after e
 | Keep the first row for a duplicated account | `tests/adapters/entitlement/snapshot.test.ts` (ACC-012 latest contract) | 5a |
 | Change the 48-hour staleness limit | `tests/adapters/entitlement/source.test.ts` (48h usable, 49h too old) | 5a |
 | Expand XML entities | `tests/adapters/entitlement/xml.test.ts` (DOCTYPE entity not expanded) | 5a |
+| Await the first entitlement load before listening | `tests/http/upstreams.test.ts` (start-up under 1 s with a slow ERP) | 5a review |
+| Keep the JSON parse error as the cause of `bad_response` | `tests/adapters/cases.test.ts` (no body fragment in the logs) | 5a review |
+| Retry with no backoff between attempts | `tests/adapters/http.test.ts` (waits the jittered backoff) | 5a review |
