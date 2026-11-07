@@ -107,14 +107,21 @@ export async function freePort(): Promise<number> {
 /** Starts the real server with the dev issuer, plus a bearer header with every scope. */
 export async function startServerWithAuth(
   logger: Logger,
-  options: { handlers?: OperationHandlers; env?: Record<string, string> } = {},
+  options: {
+    handlers?: OperationHandlers;
+    env?: Record<string, string>;
+    clock?: import('../../src/clock.js').Clock;
+  } = {},
 ): Promise<{ running: RunningServer; auth: { authorization: string } }> {
   const { startServer } = await import('../../src/server.js');
   const port = String(await freePort());
   const running = await startServer(
     testConfig({ PORT: port, DEV_ISSUER: 'true', ...options.env }),
     logger,
-    options.handlers === undefined ? {} : { handlers: options.handlers },
+    {
+      ...(options.handlers === undefined ? {} : { handlers: options.handlers }),
+      ...(options.clock === undefined ? {} : { clock: options.clock }),
+    },
   );
   if (running.issuer === undefined) throw new Error('dev issuer not mounted');
   const token = await running.issuer.mint({
@@ -123,4 +130,40 @@ export async function startServerWithAuth(
     scopes: ['customers:read', 'cases:read', 'cases:comment', 'cases:escalate'],
   });
   return { running, auth: { authorization: `Bearer ${token}` } };
+}
+
+/** Mock upstreams for a real-server test, recording the headers of every upstream request. */
+export async function startRecordingMocks(): Promise<{
+  url: string;
+  mock: import('../../mocks/server.js').MockApp;
+  seen: { path: string; headers: Record<string, string | string[] | undefined> }[];
+  close(): Promise<void>;
+}> {
+  const express = (await import('express')).default;
+  const { createMockApp } = await import('../../mocks/server.js');
+  const mock = createMockApp({ clock: fixedClock(FIXTURE_NOW) });
+  const seen: { path: string; headers: Record<string, string | string[] | undefined> }[] = [];
+  const app = express();
+  app.use((req, _res, next) => {
+    seen.push({ path: req.path, headers: { ...req.headers } });
+    next();
+  });
+  app.use(mock.app);
+  const server = await new Promise<Server>((resolve) => {
+    const s = app.listen(0, () => {
+      resolve(s);
+    });
+  });
+  const { port } = server.address() as AddressInfo;
+  return {
+    url: `http://127.0.0.1:${port}`,
+    mock,
+    seen,
+    close: () =>
+      new Promise<void>((resolve) => {
+        server.close(() => {
+          resolve();
+        });
+      }),
+  };
 }

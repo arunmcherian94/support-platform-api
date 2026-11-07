@@ -4,8 +4,10 @@ import type { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
 import type { Clock } from '../clock.js';
 import type { Config } from '../config.js';
+import type { Upstreams } from '../adapters/index.js';
+import { createDeadline } from '../adapters/deadline.js';
 import type { SecurityHandler } from '../auth/types.js';
-import { correlationMiddleware } from '../observability/context.js';
+import { correlationMiddleware, deadlineMiddleware } from '../observability/context.js';
 import { requestLogMiddleware, type Logger } from '../observability/logger.js';
 import { healthHandlers } from './health.js';
 import { AppError, errorHandler } from './problems.js';
@@ -29,6 +31,8 @@ export interface AppDeps {
   isDraining?: () => boolean;
   /** Routes mounted before the validator (e.g. the dev token issuer). */
   preValidation?: express.Router[];
+  /** Upstream adapters; readiness reports on them (S3 §2.7). */
+  upstreams?: Upstreams;
 }
 
 interface OpenApiRequest {
@@ -37,13 +41,13 @@ interface OpenApiRequest {
 
 /**
  * The HTTP pipeline. Order matters:
- * correlation → request log → body parsing → pre-validation routes →
+ * correlation → request budget → request log → body parsing → pre-validation routes →
  * contract validation (requests, responses, security) → operation handlers → errors.
  */
 export function createApp(deps: AppDeps): Express {
   const { config, logger } = deps;
   const handlers: OperationHandlers = {
-    ...healthHandlers(deps.db, deps.isDraining),
+    ...healthHandlers(deps.db, deps.isDraining, deps.upstreams),
     ...deps.handlers,
   };
 
@@ -51,6 +55,8 @@ export function createApp(deps: AppDeps): Express {
   app.disable('x-powered-by');
   app.set('etag', false);
   app.use(correlationMiddleware);
+  // Every upstream call in this request shares one budget (S3 §2.3).
+  app.use(deadlineMiddleware(() => createDeadline(config.requestBudgetMs)));
   app.use(requestLogMiddleware(logger));
   app.use(express.json({ limit: '64kb' }));
   app.use(express.urlencoded({ extended: false, limit: '16kb' }));

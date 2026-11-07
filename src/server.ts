@@ -11,7 +11,8 @@ import {
 } from './auth/dev-issuer.js';
 import { createSecurityHandler } from './auth/security-handler.js';
 import { createVerifier } from './auth/verify.js';
-import { systemClock } from './clock.js';
+import { createUpstreams, type Upstreams } from './adapters/index.js';
+import { systemClock, type Clock } from './clock.js';
 import { ConfigError, loadConfig, type Config } from './config.js';
 import { createApp, type OperationHandlers } from './http/app.js';
 import { createRateLimiter } from './http/rate-limit.js';
@@ -25,6 +26,7 @@ export interface RunningServer {
   db: DatabaseSync;
   /** The dev token issuer, when DEV_ISSUER=true (tests use it to mint tokens). */
   issuer?: DevIssuer;
+  upstreams: Upstreams;
   /**
    * Reports not-ready, waits `config.shutdownReadinessDelayMs` so load balancers
    * stop routing here, then stops accepting connections, drains in-flight
@@ -37,14 +39,18 @@ export interface RunningServer {
 export async function startServer(
   config: Config,
   logger: Logger,
-  options: { handlers?: OperationHandlers } = {},
+  options: { handlers?: OperationHandlers; clock?: Clock } = {},
 ): Promise<RunningServer> {
   if (config.dbPath !== ':memory:') mkdirSync(dirname(config.dbPath), { recursive: true });
   const db = openDatabase(config.dbPath);
   const applied = migrate(db);
   if (applied.length > 0) logger.info({ migrations: applied }, 'migrations applied');
 
-  const clock = systemClock();
+  const clock = options.clock ?? systemClock();
+  const upstreams = createUpstreams({ config, clock, logger });
+  // First load, then polling. Start-up doesn't require it to succeed: until it
+  // does, readiness reports the snapshot unavailable (S3 §2.2).
+  await upstreams.entitlement.start();
   // Dev-only issuer, mounted only on request; config refuses it in production (S2-12).
   const issuer = devIssuerEnabled(config)
     ? await createDevIssuer({ config, clock, clients: loadDevClients() })
@@ -57,6 +63,7 @@ export async function startServer(
     clock,
     logger,
     db,
+    upstreams,
     ...(issuer === undefined ? {} : { preValidation: [issuer.router] }),
     // Verified against the issuer's JWKS URL, as a production resource server would.
     securityHandler: createSecurityHandler(createVerifier({ config, clock }), {
@@ -72,6 +79,7 @@ export async function startServer(
     // Express 5 passes listen errors (e.g. EADDRINUSE) to the callback.
     const s = app.listen(config.port, (error) => {
       if (error) {
+        upstreams.entitlement.stop();
         db.close();
         reject(error);
       } else resolve(s);
@@ -100,6 +108,7 @@ export async function startServer(
     });
   const shutdown = (drainTimeoutMs = 10_000): Promise<void> => {
     draining = true;
+    upstreams.entitlement.stop();
     closing ??= (async () => {
       logger.info(
         { readinessDelayMs: config.shutdownReadinessDelayMs },
@@ -114,6 +123,7 @@ export async function startServer(
     server,
     url: `http://127.0.0.1:${port}`,
     db,
+    upstreams,
     ...(issuer === undefined ? {} : { issuer }),
     shutdown,
   };
