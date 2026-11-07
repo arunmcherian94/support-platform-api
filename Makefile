@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help install typecheck lint test check mocks run api postman
+.PHONY: help install typecheck lint test check mocks run api postman mcp
 
 # Fixture clock (S1 §4). Override with NOW=... on the command line.
 NOW ?= 2026-11-06T12:00:00Z
@@ -32,3 +32,6 @@ api: ## API only (expects mocks on :8081)
 
 postman: ## Postman functional and regression checks (expects make run)
 	npx -y newman@6.2.3 run postman/support-platform-api.postman_collection.json
+
+mcp: ## MCP server over stdio for USER_TOKEN's user (expects make run)
+	NOW=$(NOW) npx tsx mcp/server/main.ts

@@ -27,11 +27,11 @@ function insertAudit(db: DatabaseSync): void {
 }
 
 describe('migrate', () => {
-  it('applies 0001 once and is idempotent', () => {
+  it('applies the migrations once and is idempotent', () => {
     const db = openDatabase(':memory:');
-    expect(migrate(db)).toEqual(['0001_init']);
+    expect(migrate(db)).toEqual(['0001_init', '0002_pending_actions']);
     expect(migrate(db)).toEqual([]);
-    const row = db.prepare('SELECT applied_at FROM schema_migrations').get();
+    const row = db.prepare('SELECT applied_at FROM schema_migrations LIMIT 1').get();
     expect(String(row?.['applied_at'])).toMatch(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/);
   });
 
@@ -45,9 +45,9 @@ describe('migrate', () => {
         'webhook_subscriptions',
         'webhook_deliveries',
         'schema_migrations',
+        'pending_actions',
       ]),
     );
-    expect(names(db, 'table')).not.toContain('pending_actions');
     expect(names(db, 'index')).toEqual(
       expect.arrayContaining([
         'idx_idempotency_expires_at',
@@ -55,6 +55,8 @@ describe('migrate', () => {
         'idx_audit_actor_sub',
         'idx_audit_actor_agent',
         'idx_deliveries_status_next',
+        'idx_pending_actions_status',
+        'idx_pending_actions_case',
       ]),
     );
   });
