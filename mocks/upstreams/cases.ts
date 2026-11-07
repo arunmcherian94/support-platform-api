@@ -32,12 +32,24 @@ interface CaseRecord {
 interface Filters {
   status?: string[];
   priority?: string[];
-  accountId?: string;
+  accountId?: string[];
   openedAfter?: string;
   openedBefore?: string;
 }
 
-interface Locator {
+type SortKey = 'openedAt' | '-openedAt' | 'priority' | '-priority';
+
+interface After {
+  value: string;
+  id: string;
+}
+
+interface Order {
+  sort?: SortKey;
+  after?: After;
+}
+
+interface Locator extends Order {
   offset: number;
   filters: Filters;
   pageSize: number;
@@ -45,6 +57,7 @@ interface Locator {
 
 const STATUSES = ['open', 'in_progress', 'closed'];
 const PRIORITIES = ['P1', 'P2', 'P3', 'P4'];
+const SORTS: SortKey[] = ['openedAt', '-openedAt', 'priority', '-priority'];
 const DEFAULT_PAGE_SIZE = 5;
 const MAX_COMMENT_BODY = 4000;
 const RFC3339 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
@@ -103,7 +116,7 @@ function validTimestamp(value: unknown): value is string {
 /** Returns filters and pageSize, or an error message. */
 function parseQuery(
   query: Record<string, unknown>,
-): { filters: Filters; pageSize: number } | string {
+): ({ filters: Filters; pageSize: number } & Order) | string {
   const filters: Filters = {};
   const allowedKeys = new Set([
     'status',
@@ -112,6 +125,9 @@ function parseQuery(
     'openedAfter',
     'openedBefore',
     'pageSize',
+    'sort',
+    'afterValue',
+    'afterId',
   ]);
   for (const key of Object.keys(query)) {
     if (!allowedKeys.has(key)) return `unknown query parameter: ${key}`;
@@ -130,7 +146,9 @@ function parseQuery(
     if (typeof query.accountId !== 'string' || query.accountId === '') {
       return 'accountId must be a non-empty string';
     }
-    filters.accountId = query.accountId;
+    const accountIds = query.accountId.split(',');
+    if (accountIds.some((a) => a === '')) return 'accountId must be a list of non-empty values';
+    filters.accountId = accountIds;
   }
   if (query.openedAfter !== undefined) {
     if (!validTimestamp(query.openedAfter)) return 'openedAfter must be an RFC 3339 timestamp';
@@ -147,13 +165,61 @@ function parseQuery(
     pageSize = Number(raw);
     if (pageSize < 1 || pageSize > 200) return 'pageSize must be between 1 and 200';
   }
-  return { filters, pageSize };
+  const order: Order = {};
+  if (query.sort !== undefined) {
+    const sort = SORTS.find((s) => s === query.sort);
+    if (sort === undefined) return `sort must be one of ${SORTS.join(',')}`;
+    order.sort = sort;
+  }
+  const hasValue = query.afterValue !== undefined;
+  const hasId = query.afterId !== undefined;
+  if (hasValue !== hasId) return 'afterValue and afterId must be given together';
+  if (hasValue && hasId) {
+    if (order.sort === undefined) return 'afterValue and afterId require sort';
+    const { afterValue, afterId } = query;
+    if (typeof afterId !== 'string' || afterId === '') return 'afterId must be a non-empty string';
+    if (order.sort.endsWith('openedAt')) {
+      if (!validTimestamp(afterValue)) return 'afterValue must be an RFC 3339 timestamp';
+    } else if (typeof afterValue !== 'string' || !PRIORITIES.includes(afterValue)) {
+      return `afterValue must be one of ${PRIORITIES.join(',')}`;
+    }
+    order.after = { value: afterValue, id: afterId };
+  }
+  return { filters, pageSize, ...order };
+}
+
+function sortValue(record: CaseRecord, sort: SortKey, value: string = ''): number | string {
+  if (sort.endsWith('openedAt')) return Date.parse(value === '' ? record.openedAt : value);
+  return value === '' ? record.priority : value;
+}
+
+function compareIds(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
+function compareBy(sort: SortKey | undefined): (a: CaseRecord, b: CaseRecord) => number {
+  return (a, b) => {
+    if (sort !== undefined) {
+      const x = sortValue(a, sort);
+      const y = sortValue(b, sort);
+      if (x !== y) return (x < y ? -1 : 1) * (sort.startsWith('-') ? -1 : 1);
+    }
+    return compareIds(a.id, b.id);
+  };
+}
+
+/** Strictly after (value, id) in the active order; id always breaks ties ascending. */
+function isAfter(record: CaseRecord, sort: SortKey, after: After): boolean {
+  const x = sortValue(record, sort);
+  const y = sortValue(record, sort, after.value);
+  if (x === y) return record.id > after.id;
+  return sort.startsWith('-') ? x < y : x > y;
 }
 
 function matches(record: CaseRecord, f: Filters): boolean {
   if (f.status && !f.status.includes(record.Status)) return false;
   if (f.priority && !f.priority.includes(record.priority)) return false;
-  if (f.accountId !== undefined && record.accountId !== f.accountId) return false;
+  if (f.accountId !== undefined && !f.accountId.includes(record.accountId)) return false;
   const opened = Date.parse(record.openedAt);
   if (f.openedAfter !== undefined && !(opened >= Date.parse(f.openedAfter))) return false;
   if (f.openedBefore !== undefined && !(opened < Date.parse(f.openedBefore))) return false;
@@ -168,7 +234,7 @@ function decodeLocator(token: string): Locator | undefined {
   try {
     const parsed: unknown = JSON.parse(Buffer.from(token, 'base64url').toString('utf8'));
     if (!isPlainObject(parsed)) return undefined;
-    const { offset, filters, pageSize } = parsed;
+    const { offset, filters, pageSize, sort, after } = parsed;
     if (typeof offset !== 'number' || !Number.isInteger(offset) || offset < 0) return undefined;
     if (typeof pageSize !== 'number' || !Number.isInteger(pageSize)) return undefined;
     if (pageSize < 1 || pageSize > 200) return undefined;
@@ -178,9 +244,18 @@ function decodeLocator(token: string): Locator | undefined {
     for (const [k, v] of Object.entries(filters)) {
       asQuery[k] = Array.isArray(v) ? (v as unknown[]).join(',') : v;
     }
+    if (sort !== undefined) asQuery.sort = sort;
+    if (after !== undefined) {
+      if (!isPlainObject(after)) return undefined;
+      asQuery.afterValue = after.value;
+      asQuery.afterId = after.id;
+    }
     const checked = parseQuery(asQuery);
     if (typeof checked === 'string') return undefined;
-    return { offset, filters: checked.filters, pageSize };
+    const order: Order = {};
+    if (checked.sort !== undefined) order.sort = checked.sort;
+    if (checked.after !== undefined) order.after = checked.after;
+    return { offset, filters: checked.filters, pageSize, ...order };
   } catch {
     return undefined;
   }
@@ -199,9 +274,11 @@ export function casesRouter(deps: UpstreamDeps): UpstreamModule {
   const router = Router();
 
   const page = (res: Response, locator: Locator): void => {
+    const { sort, after } = locator;
     const sorted = store
       .filter((c) => matches(c, locator.filters))
-      .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+      .filter((c) => sort === undefined || after === undefined || isAfter(c, sort, after))
+      .sort(compareBy(sort));
     const records = sorted.slice(locator.offset, locator.offset + locator.pageSize);
     const nextOffset = locator.offset + locator.pageSize;
     const more = nextOffset < sorted.length;
@@ -222,7 +299,8 @@ export function casesRouter(deps: UpstreamDeps): UpstreamModule {
       sfError(res, 400, 'MALFORMED_QUERY', parsed);
       return;
     }
-    page(res, { offset: 0, filters: parsed.filters, pageSize: parsed.pageSize });
+    const { filters, pageSize, ...order } = parsed;
+    page(res, { offset: 0, filters, pageSize, ...order });
   });
 
   router.get('/cases/query/:token', (req, res) => {
