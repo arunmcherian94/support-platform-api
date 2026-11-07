@@ -9,17 +9,29 @@
  * - `GET  /dev/.well-known/jwks.json` publishes the public key.
  * - `POST /dev/oauth/token` implements the client_credentials grant
  *   (RFC 6749 §4.4) for the fake clients in config/dev-clients.json.
+ * - It also implements RFC 8693 token exchange for agents (S5 §2.2): an agent
+ *   client trades a user's token for a delegated one (`sub` = user, `act.sub` =
+ *   agent, scopes = user ∩ agent). Exchanging a delegated token is refused.
  * - The authorization-code flow named in the contract is not built.
  */
 import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import express, { type Request, type Response } from 'express';
-import { exportJWK, generateKeyPair, SignJWT, type JSONWebKeySet, type JWTPayload } from 'jose';
+import {
+  exportJWK,
+  generateKeyPair,
+  jwtVerify,
+  SignJWT,
+  type JSONWebKeySet,
+  type JWTPayload,
+} from 'jose';
 import type { Clock } from '../clock.js';
 import type { Config } from '../config.js';
 
 export const TOKEN_LIFETIME_SEC = 900;
 const REALM = 'dev-issuer';
+export const TOKEN_EXCHANGE_GRANT = 'urn:ietf:params:oauth:grant-type:token-exchange';
+export const ACCESS_TOKEN_TYPE = 'urn:ietf:params:oauth:token-type:access_token';
 
 export interface DevClient {
   clientId: string;
@@ -97,7 +109,11 @@ class OAuthError extends Error {
   constructor(
     readonly status: 400 | 401,
     readonly code:
-      'invalid_request' | 'invalid_client' | 'unsupported_grant_type' | 'invalid_scope',
+      | 'invalid_request'
+      | 'invalid_client'
+      | 'invalid_grant'
+      | 'unsupported_grant_type'
+      | 'invalid_scope',
     readonly description: string,
   ) {
     super(description);
@@ -199,6 +215,76 @@ export async function createDevIssuer(deps: {
     return scopes;
   }
 
+  /**
+   * RFC 8693: the subject token must be one this issuer signed, for this
+   * audience, still valid, and not already delegated (one level only, as the
+   * verifier requires). The result never carries more than the user had or
+   * the agent client is allowed.
+   */
+  async function exchange(
+    client: DevClient,
+    body: Record<string, unknown>,
+  ): Promise<{ token: string; expiresIn: number; scopes: string[]; sub: string }> {
+    const subjectToken = param(body, 'subject_token');
+    if (subjectToken === undefined || subjectToken === '') {
+      throw new OAuthError(400, 'invalid_request', 'subject_token is required.');
+    }
+    if (param(body, 'subject_token_type') !== ACCESS_TOKEN_TYPE) {
+      throw new OAuthError(
+        400,
+        'invalid_request',
+        `subject_token_type must be ${ACCESS_TOKEN_TYPE}.`,
+      );
+    }
+    if (param(body, 'actor_token') !== undefined) {
+      throw new OAuthError(400, 'invalid_request', 'actor_token is not supported.');
+    }
+    let claims: JWTPayload;
+    try {
+      ({ payload: claims } = await jwtVerify(subjectToken, publicKey, {
+        issuer: config.issuerUrl,
+        audience: config.audience,
+        algorithms: ['RS256'],
+        currentDate: clock.now(),
+      }));
+    } catch {
+      throw new OAuthError(400, 'invalid_grant', 'The subject token is not valid.');
+    }
+    if (claims.act !== undefined) {
+      throw new OAuthError(400, 'invalid_request', 'The subject token is already delegated.');
+    }
+    const { sub, scope, exp } = claims;
+    if (typeof sub !== 'string' || sub === '' || typeof scope !== 'string' || exp === undefined) {
+      throw new OAuthError(400, 'invalid_grant', 'The subject token is not valid.');
+    }
+    const userScopes = new Set(scope.split(' ').filter((s) => s !== ''));
+    let scopes = client.scopes.filter((s) => userScopes.has(s));
+    const requested = param(body, 'scope');
+    if (requested !== undefined) {
+      const wanted = [...new Set(requested.split(' ').filter((s) => s !== ''))];
+      if (wanted.length === 0 || wanted.some((s) => !scopes.includes(s))) {
+        throw new OAuthError(400, 'invalid_scope', 'The requested scope is not allowed.');
+      }
+      scopes = wanted;
+    }
+    if (scopes.length === 0) {
+      throw new OAuthError(400, 'invalid_scope', 'The user and the agent share no scope.');
+    }
+    const now = Math.floor(clock.now().getTime() / 1000);
+    // Never outlives the user's token.
+    const expiresIn = Math.min(TOKEN_LIFETIME_SEC, exp - now);
+    if (expiresIn <= 0)
+      throw new OAuthError(400, 'invalid_grant', 'The subject token is not valid.');
+    const delegated = await mint({
+      sub,
+      clientId: client.clientId,
+      scopes,
+      act: { sub: client.clientId },
+      expiresInSec: expiresIn,
+    });
+    return { token: delegated, expiresIn, scopes, sub };
+  }
+
   async function token(req: Request, res: Response): Promise<void> {
     // RFC 6749 §5.1: token responses must not be cached.
     res.set({ 'Cache-Control': 'no-store', Pragma: 'no-cache' });
@@ -211,11 +297,28 @@ export async function createDevIssuer(deps: {
       if (grantType === undefined) {
         throw new OAuthError(400, 'invalid_request', 'grant_type is required.');
       }
+      if (grantType === TOKEN_EXCHANGE_GRANT) {
+        const client = authenticate(req, body);
+        const result = await exchange(client, body);
+        res.locals.identity = {
+          clientId: client.clientId,
+          sub: result.sub,
+          agent: client.clientId,
+        };
+        res.status(200).json({
+          access_token: result.token,
+          issued_token_type: ACCESS_TOKEN_TYPE,
+          token_type: 'Bearer',
+          expires_in: result.expiresIn,
+          scope: result.scopes.join(' '),
+        });
+        return;
+      }
       if (grantType !== 'client_credentials') {
         throw new OAuthError(
           400,
           'unsupported_grant_type',
-          'Only client_credentials is supported.',
+          'Only client_credentials and token exchange are supported.',
         );
       }
       const client = authenticate(req, body);
