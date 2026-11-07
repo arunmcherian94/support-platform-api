@@ -191,3 +191,26 @@ describe('timestamps in the query (allowReserved)', () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe('Idempotency-Key (S4-2)', () => {
+  it('answers a missing key with idempotency-key-required, not a generic validation error', async () => {
+    app = await startTestApp();
+    const res = await fetch(`${app.url}/v1/cases/CS-10231/comments`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ body: 'hello' }),
+    });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as Problem).type).toMatch(/idempotency-key-required$/);
+  });
+
+  it('keeps validation-failed for other invalid input when the key is present', async () => {
+    app = await startTestApp();
+    const res = await fetch(`${app.url}/v1/cases/CS-10231/comments`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'Idempotency-Key': '"k1"' },
+      body: JSON.stringify({ body: '' }),
+    });
+    expect(((await res.json()) as Problem).type).toMatch(/validation-failed$/);
+  });
+});

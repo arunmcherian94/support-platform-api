@@ -17,6 +17,7 @@ import { ConfigError, loadConfig, type Config } from './config.js';
 import { createApp, type OperationHandlers } from './http/app.js';
 import { getCaseHandler } from './http/handlers/case-detail.js';
 import { listCasesHandler } from './http/handlers/cases.js';
+import { addCaseCommentHandler } from './http/handlers/comments.js';
 import { getCustomerHandler } from './http/handlers/customers.js';
 import { createRateLimiter } from './http/rate-limit.js';
 import { createLogger, type Logger } from './observability/logger.js';
@@ -82,6 +83,7 @@ export async function startServer(
       getCustomer: getCustomerHandler(readDeps),
       listCases: listCasesHandler(readDeps),
       getCase: getCaseHandler(readDeps),
+      addCaseComment: addCaseCommentHandler({ ...readDeps, db }),
       // Tests may replace any operation.
       ...options.handlers,
     },

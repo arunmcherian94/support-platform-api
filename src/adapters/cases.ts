@@ -144,6 +144,10 @@ function searchPath(query: CaseQuery): string {
 
 export function createCaseSystem(client: UpstreamClient): CaseSystem {
   return {
+    // Placeholder: slice F implements the write.
+    addComment(): Promise<never> {
+      return Promise.reject(new Error('addComment not implemented'));
+    },
     async search(query: CaseQuery): Promise<CasePage> {
       // Only the first upstream page is used; keyset paging replaces nextRecordsUrl.
       const response = await client.request({ path: searchPath(query) });

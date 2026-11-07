@@ -29,6 +29,18 @@ describe('config (S2-9)', () => {
     [{ NOW: 'yesterday' }, /NOW must be an RFC 3339 timestamp/],
     [{ REQUEST_BUDGET_MS: '50' }, /REQUEST_BUDGET_MS must be between/],
     [{ ENTITLEMENT_REFRESH_SECONDS: '0' }, /ENTITLEMENT_REFRESH_SECONDS must be between/],
+    [{ WEBHOOK_URL: 'http://127.0.0.1:9/hook' }, /WEBHOOK_SECRET must be whsec_/],
+    [
+      { WEBHOOK_URL: 'http://127.0.0.1:9/hook', WEBHOOK_SECRET: 'whsec_c2hvcnQ=' },
+      /WEBHOOK_SECRET/,
+    ],
+    [
+      {
+        WEBHOOK_URL: 'not a url',
+        WEBHOOK_SECRET: 'whsec_ZGV2LW9ubHktd2ViaG9vay1zZWNyZXQtZm9yLWxvY2Fs',
+      },
+      /WEBHOOK_URL must be/,
+    ],
     [{ NODE_ENV: 'production' }, /ISSUER_URL is required when NODE_ENV=production/],
     [{ NODE_ENV: 'production', ISSUER_URL: 'https://idp.example' }, /AUDIENCE is required/],
   ])('rejects %j naming the variable', (env, message) => {
@@ -43,5 +55,15 @@ describe('config (S2-9)', () => {
       loadConfig({ NODE_ENV: 'production', ISSUER_URL: 'https://idp.example', AUDIENCE: 'api' })
         .devIssuer,
     ).toBe(false);
+  });
+});
+
+describe('webhook config (S4 §2.2)', () => {
+  it('has no subscription without WEBHOOK_URL, and one with a valid secret', () => {
+    expect(loadConfig({}).webhook).toBeUndefined();
+    const secret = 'whsec_ZGV2LW9ubHktd2ViaG9vay1zZWNyZXQtZm9yLWxvY2Fs';
+    expect(
+      loadConfig({ WEBHOOK_URL: 'http://127.0.0.1:9/hook', WEBHOOK_SECRET: secret }).webhook,
+    ).toEqual({ url: 'http://127.0.0.1:9/hook', secret });
   });
 });

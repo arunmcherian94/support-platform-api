@@ -68,4 +68,10 @@ export interface CaseSystem {
   search(query: CaseQuery): Promise<CasePage>;
   /** Throws UpstreamError with kind `not_found` for an unknown case. */
   get(caseId: string): Promise<CaseDetailRecord>;
+  /**
+   * Adds a comment, written through to the case system. A single attempt,
+   * never retried: the upstream create isn't idempotent (S4 §2.1).
+   * Throws `not_found` for an unknown case.
+   */
+  addComment(caseId: string, comment: { author: string; body: string }): Promise<CaseComment>;
 }

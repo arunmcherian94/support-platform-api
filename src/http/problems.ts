@@ -100,6 +100,13 @@ function sendProblem(req: Request, res: Response, error: AppError): void {
   res.status(definition.status).type('application/problem+json').send(JSON.stringify(body));
 }
 
+/** The contract marks Idempotency-Key required; its absence has its own problem type (ADR-0005). */
+function missingIdempotencyKey(error: ValidatorError): boolean {
+  return (error.errors ?? []).some(
+    (item) => /idempotency-key/i.test(item.path) && /required/i.test(item.message),
+  );
+}
+
 /** Errors from the body parser and similar middleware (http-errors shape). */
 function clientErrorStatus(error: unknown): number | undefined {
   if (typeof error !== 'object' || error === null) return undefined;
@@ -119,6 +126,17 @@ export function errorHandler(logger: Logger) {
       if (error.status >= 500)
         logger.error({ err: error, problem: error.problem }, 'request failed');
       sendProblem(req, res, error);
+      return;
+    }
+    if (isValidatorError(error) && error.status === 400 && missingIdempotencyKey(error)) {
+      sendProblem(
+        req,
+        res,
+        new AppError(
+          'idempotency-key-required',
+          'Send a unique Idempotency-Key with every comment create.',
+        ),
+      );
       return;
     }
     if (isValidatorError(error) && error.status === 400) {
