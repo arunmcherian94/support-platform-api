@@ -228,3 +228,15 @@ The two slices (auth, rate limits) ran in parallel on opus in worktrees. Integra
 **What was done.** Drafted S4 for its own spec PR: idempotent comment create (atomic key claim, successes stored, external-ID dedupe upstream), subscriptions seeded from config with secrets in the environment, enqueue inside the caller's transaction, a dispatcher with the contract's retry schedule, and a reference receiver.
 
 **Open questions.** The seven decisions in S4 §5 are confirmed by merging the spec PR.
+
+## 2026-11-07 — PR 6: comments and webhooks
+
+**What was done.** S4-1 to S4-9: idempotent comment create (atomic claim, replay, 422/409, keys released on failure, single upstream attempt) and the case.escalated sender (signing over stored bytes, verification, enqueue in the caller's transaction, retry schedule, dead-letter, 410). Two opus slices, then wiring and an end-to-end delivery test.
+
+**What changed and why.**
+- **Both slices were refused by the permission system,** then stopped on the account usage limit; allow rules for the worktrees were added outside the repo at the human's request, and the slices resumed after the reset.
+- **Three sabotage checks first passed every test** (re-serialised body, a never-due 410 row, check-then-insert in one process); each got a stronger test.
+- **Fresh review:** 0 critical, 0 major, 7 minor; four fixed.
+- **Process from here:** opus only where necessary, sonnet for scoped work, haiku for low-risk changes, one slice at a time (human decision, to save usage).
+
+**Open questions.** None.

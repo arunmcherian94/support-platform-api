@@ -1,6 +1,6 @@
 # S4 — Comments and webhooks
 
-- **Status:** Draft. Approved by merging its spec PR.
+- **Status:** Implemented (PR 6). Approved by merging #13.
 - **Decisions:** ADR-0005 (idempotency, webhook conventions), DECISIONS rows 15 and 19, ADR-0002 (writes go through to the case system synchronously), Gate 3a row 24 (retry only idempotent writes).
 - **Traceability:** A3 and A5 (implementation), B1 (item 3 plus the webhook sender), the Part B ACs on idempotent comments and webhook verification.
 
