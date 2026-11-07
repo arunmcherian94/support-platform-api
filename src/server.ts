@@ -109,9 +109,10 @@ export async function startServer(
     const s = app.listen(config.port, (error) => {
       if (error) {
         upstreams.entitlement.stop();
-        void dispatcher?.stop();
-        db.close();
-        reject(error);
+        void (dispatcher?.stop() ?? Promise.resolve()).finally(() => {
+          db.close();
+          reject(error);
+        });
       } else resolve(s);
     });
   });

@@ -13,9 +13,9 @@ const { path, keys, barrier } = workerData as {
   barrier: SharedArrayBuffer;
 };
 
-// Not openDatabase(): it sets journal_mode before busy_timeout, so two
-// connections opening at once can fail with SQLITE_BUSY. The test set up WAL
-// already; here the busy timeout applies from the first statement.
+// The busy timeout applies from the very first statement (the constructor
+// option), so two connections opening the same file at once wait rather than
+// fail with SQLITE_BUSY. The test set up WAL already.
 const db = new DatabaseSync(path, { timeout: 5000 });
 const gate = new Int32Array(barrier);
 Atomics.add(gate, 0, 1);

@@ -133,10 +133,15 @@ export function addCaseCommentHandler(deps: CommentDeps): RequestHandler {
         body: created.body,
         createdAt: created.createdAt,
       };
-      if (!complete(deps.db, result.claim, { status, headers, body: responseBody })) {
-        // The claim was taken over after 60 s; the comment exists, so still answer 201.
-        deps.logger.warn({ caseId }, 'idempotency claim lost before completion');
+      // The comment exists upstream, so the answer is 201 whatever happens to the
+      // stored replay: a lost claim (taken over after 60 s) or a store error is logged.
+      let stored = false;
+      try {
+        stored = complete(deps.db, result.claim, { status, headers, body: responseBody });
+      } catch (error) {
+        deps.logger.error({ err: error, caseId }, 'idempotency record not completed');
       }
+      if (!stored) deps.logger.warn({ caseId }, 'idempotency claim not completed');
       res.set(headers).status(status).json(responseBody);
     } catch (error) {
       next(error);
