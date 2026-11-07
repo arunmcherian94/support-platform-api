@@ -55,3 +55,12 @@ Each row: the rule broken on purpose, and the test that failed. Reverted after e
 | Charge the rate limit after request validation instead of after verification | `tests/auth/review-fixes.test.ts` (400 and 403 charged) | 4b |
 | Treat only JWKS timeouts as an unavailable identity provider | `tests/auth/review-fixes.test.ts` (500, HTML, non-key-set → 503) | 4b |
 | Require only `sub` (drop `exp`, `iat`, `client_id`) | `tests/auth/review-fixes.test.ts` (no exp refused) | 4b |
+| Count 404 and other 4xx toward the breaker | `tests/adapters/http.test.ts`, `tests/http/upstreams.test.ts` (7 tests, incl. 404s never open it) | 5a |
+| Retry every upstream error, including 4xx | `tests/adapters/http.test.ts` (3 tests: one attempt on 404/400/422) | 5a |
+| Ignore `Retry-After` on a 429 | `tests/adapters/http.test.ts` (3 tests: wait timing, budget, default) | 5a |
+| Drop the request-budget check on retries | `tests/adapters/http.test.ts` (2 tests) | 5a |
+| Ignore precedence (tier and renewal from the CSV only) | `tests/adapters/entitlement/snapshot.test.ts` (6 tests: ACC-030 renewal, ACC-042 tier) | 5a |
+| Skip the ID crosswalk | `tests/adapters/entitlement/*` (8 tests: ACC-77 → ACC-007) | 5a |
+| Keep the first row for a duplicated account | `tests/adapters/entitlement/snapshot.test.ts` (ACC-012 latest contract) | 5a |
+| Change the 48-hour staleness limit | `tests/adapters/entitlement/source.test.ts` (48h usable, 49h too old) | 5a |
+| Expand XML entities | `tests/adapters/entitlement/xml.test.ts` (DOCTYPE entity not expanded) | 5a |
