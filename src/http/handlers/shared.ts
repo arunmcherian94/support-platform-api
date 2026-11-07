@@ -29,16 +29,26 @@ export function pathParam(req: Request, name: string): string {
 }
 
 /**
- * Query values after validation. The validator restores Express's raw query
- * object after checking it, so values are strings (or string arrays when a
- * parameter repeats) and must be converted here. They already passed the
- * contract's schema, so conversion can't fail on valid input.
+ * Query values after validation. The validator coerces them to the contract's
+ * types (integers become numbers, defaults are filled in, a repeated
+ * parameter is an array), so these helpers accept the coerced value and, for
+ * safety, its string form. A value of the wrong type after validation is a
+ * server bug and throws, rather than reading as absent: a dropped filter
+ * would silently widen a search.
  */
+function rawQuery(req: Request, name: string): unknown {
+  return (req.query as Record<string, unknown>)[name];
+}
+
 export function queryList(req: Request, name: string): string[] | undefined {
-  const value: unknown = (req.query as Record<string, unknown>)[name];
+  const value = rawQuery(req, name);
   if (value === undefined) return undefined;
   const items: unknown[] = Array.isArray(value) ? value : [value];
-  return items.filter((item): item is string => typeof item === 'string');
+  return items.map((item) => {
+    if (typeof item === 'string') return item;
+    if (typeof item === 'number') return String(item);
+    throw new Error(`query parameter ${name} has an unexpected type after validation`);
+  });
 }
 
 export function queryString(req: Request, name: string): string | undefined {
@@ -46,8 +56,13 @@ export function queryString(req: Request, name: string): string | undefined {
 }
 
 export function queryInt(req: Request, name: string): number | undefined {
-  const value = queryString(req, name);
-  return value === undefined ? undefined : Number.parseInt(value, 10);
+  const value = rawQuery(req, name);
+  if (value === undefined) return undefined;
+  const parsed = typeof value === 'string' ? Number(value) : value;
+  if (typeof parsed !== 'number' || !Number.isInteger(parsed)) {
+    throw new Error(`query parameter ${name} is not an integer after validation`);
+  }
+  return parsed;
 }
 
 /** The verified caller. Every read operation requires a token, so absence is a server bug. */

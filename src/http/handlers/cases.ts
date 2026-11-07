@@ -3,7 +3,7 @@
  * every filter goes to the case system in one query, and the page that comes
  * back is joined with the entitlement snapshot. Nothing is scanned in memory.
  */
-import type { Request, RequestHandler } from 'express';
+import type { RequestHandler } from 'express';
 import { accountSummary, entitlementSources, type AccountSummary } from '../../domain/account.js';
 import { resolveAccounts, utcDate } from '../../domain/case-search.js';
 import {
@@ -24,7 +24,7 @@ import type {
 } from '../../ports/cases.js';
 import type { SupportTier } from '../../ports/entitlement.js';
 import { AppError } from '../problems.js';
-import { entitlementStale, queryList, queryString, upstreamProblem } from './shared.js';
+import { entitlementStale, queryInt, queryList, queryString, upstreamProblem } from './shared.js';
 import type { ReadDeps } from './shared.js';
 
 const DEFAULT_LIMIT = 25;
@@ -51,22 +51,6 @@ function parseSort(raw: string | undefined): { field: CaseSortField; descending:
   return { field, descending };
 }
 
-/**
- * An integer query parameter. The validator coerces integer parameters to
- * numbers (and fills in defaults), so `req.query` holds a number here, not
- * the raw string `queryInt` expects; a filter read as absent would silently
- * widen the search. Accepts either form and fails loudly on anything else.
- */
-function intParam(req: Request, name: string): number | undefined {
-  const value: unknown = (req.query as Record<string, unknown>)[name];
-  if (value === undefined) return undefined;
-  const parsed = typeof value === 'string' ? Number(value) : value;
-  if (typeof parsed !== 'number' || !Number.isInteger(parsed)) {
-    throw new Error(`query parameter ${name} is not an integer after validation`);
-  }
-  return parsed;
-}
-
 function sortValue(record: CaseRecord, field: CaseSortField): string {
   return field === 'priority' ? record.priority : record.openedAt;
 }
@@ -78,11 +62,11 @@ export function listCasesHandler(deps: ReadDeps): RequestHandler {
     const priority = queryList(req, 'priority') as Priority[] | undefined;
     const accountTier = queryList(req, 'accountTier') as SupportTier[] | undefined;
     const accountId = queryString(req, 'accountId');
-    const renewalWithinDays = intParam(req, 'renewalWithinDays');
+    const renewalWithinDays = queryInt(req, 'renewalWithinDays');
     const openedAfter = queryString(req, 'openedAfter');
     const openedBefore = queryString(req, 'openedBefore');
     const sort = parseSort(queryString(req, 'sort'));
-    const limit = intParam(req, 'limit') ?? DEFAULT_LIMIT;
+    const limit = queryInt(req, 'limit') ?? DEFAULT_LIMIT;
     const cursorText = queryString(req, 'cursor');
 
     const now = deps.clock.now();
