@@ -1,6 +1,6 @@
 # S3 — Read path
 
-- **Status:** Draft. Approved by merging its spec PR.
+- **Status:** Implemented (PRs #10 and 5b). Approved by merging #9.
 - **Decisions:** ADR-0002 (ports and adapters, required vs optional upstreams), ADR-0003 (entitlement snapshot, precedence, IDs), ADR-0005 (contract conventions), Gate 3a rows 23–25 in DECISIONS.md (timeouts, retries, breakers).
 - **Traceability:** A1, A2 (implementation), A9 (ARR by scope), B1 (items 1–2), B4, B5, B9 (propagation to upstreams), the Part B ACs on degraded mode, resilience, ARR and the Copilot question.
 
