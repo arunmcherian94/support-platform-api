@@ -79,3 +79,13 @@ Each row: the rule broken on purpose, and the test that failed. Reverted after e
 | Make `openedBefore` inclusive (enforced in the case-system query; a real adapter must emit `<`) | `tests/http/list-cases.test.ts` (S3-10 exact-instant test) | 5b review |
 | Return an empty page instead of 400 above 500 accounts | `tests/http/list-cases-limits.test.ts` | 5b review |
 | Keep the feed's own status when the export is too old | `tests/domain/account.test.ts`, `tests/http/list-cases.test.ts` (too old) | 5b review |
+| Drop the idempotency request-hash comparison | `tests/store/idempotency.test.ts`, `tests/http/comments.test.ts` (422) | 6 |
+| Leave the client out of the key scope | `tests/http/comments.test.ts` (other client, user or case) | 6 |
+| Check-then-insert instead of the atomic claim | `tests/store/idempotency.test.ts` (two-thread race on one file) only; in one process `claim` is synchronous, so the HTTP concurrency test can't see it | 6 |
+| Store failed responses instead of releasing the key | `tests/http/comments.test.ts` (retry after 503, 404 releases) | 6 |
+| Retry the comment write | `tests/adapters/cases-add-comment.test.ts`, `tests/http/comments.test.ts` | 6 |
+| Sign without the timestamp | `tests/events/signing.test.ts`, `verify.test.ts`, `dispatcher.test.ts` (5 tests) | 6 |
+| Sign or verify a re-serialised body | `tests/events/dispatcher.test.ts` (stored bytes sent as-is), `verify.test.ts` | 6 |
+| Skip the timestamp tolerance or the duplicate check | `tests/events/verify.test.ts` | 6 |
+| Retry after a 410, or never mark a delivery dead | `tests/events/dispatcher.test.ts` | 6 |
+| Don't start the dispatcher with the server | `tests/http/webhooks-e2e.test.ts` | 6 |
