@@ -19,7 +19,7 @@ The contract already fixes the outcomes (ADR-0005): replay on the same key and b
 - **When the key already exists:**
   - expired (`expires_at` passed): treated as absent and replaced;
   - different request hash: 422 `idempotency-key-reused`, whatever the row's state;
-  - `in_flight`: 409 `request-in-progress`. An `in_flight` row older than 60 seconds (well past the 10 s request budget) is treated as abandoned by a crashed request and may be taken over;
+  - `in_flight`: 409 `request-in-progress`. An `in_flight` row older than 60 seconds (well past the 10 s request budget) is treated as abandoned by a crashed request and may be taken over. Like an expired key, an abandoned one counts as absent, so it is taken over whatever the new body (the hash rule below applies to live keys);
   - `completed`: replay the stored status, body and `Location`, with `Idempotent-Replayed: true`. The case system is not called.
 - **What is stored:** only a successful create (201). Any failure deletes the `in_flight` row, so the client may retry with the same key.
 - **The comment write is not retried automatically.** A POST to the case system isn't idempotent, so a retry could duplicate it (decision 24). It runs with the case-system timeout and breaker, as a single attempt.
