@@ -199,3 +199,14 @@ The two slices (auth, rate limits) ran in parallel on opus in worktrees. Integra
 **What was done.** Drafted S3 (read path) for its own spec PR, before any code: adapters and the entitlement snapshot, resilience numbers and failure mapping, the three read endpoints, the cursor, and readiness.
 
 **Open questions.** The seven decisions in S3 §5 are confirmed by merging the spec PR.
+
+## 2026-11-07 — PR 5a: upstream adapters
+
+**What was done.** S3-2, S3-6, S3-7, S3-8, S3-12 and S3-13: the three adapters behind their ports, one resilient client per upstream (cockatiel: timeout, retry, consecutive breaker), the entitlement snapshot (CSV and XML parsing, crosswalk, duplicates, precedence, 48-hour staleness, conditional polling), readiness from the snapshot and breaker states, and correlation headers on upstream calls. Built in three parallel slices (two on opus, one on sonnet) on top of a shared base, then integrated in session.
+
+**What changed and why.**
+- **cockatiel's breaker reads the system clock** and hides when it opened. Kept the library (human decision): the breaker test uses fake timers, and an open breaker's `Retry-After` is the full half-open delay. Spec wording updated in this PR.
+- **The fresh-context review** found three majors (no criticals): start-up blocked on the ERP, a parse error could carry body fragments into logs, and no test proved backoff. All fixed with tests that fail on the old code.
+- **Size.** About 1,900 lines of source and mock code, above the ~400-line guideline, mostly explicit validation of upstream shapes and the two parsers.
+
+**Open questions.** None; minor follow-ups are listed in the PR.
