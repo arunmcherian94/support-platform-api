@@ -338,13 +338,21 @@ paths:
             maximum: 365
         - name: openedAfter
           in: query
-          description: Only cases opened at or after this time (inclusive), RFC 3339.
+          description: |
+            Only cases opened at or after this time (inclusive), RFC 3339. Colons may be sent unencoded
+            (`2026-11-04T12:00:00Z`). Encode a `+` offset as `%2B`, or use `Z`: in a
+            query string a raw `+` means a space.
+          allowReserved: true
           schema:
             type: string
             format: date-time
         - name: openedBefore
           in: query
-          description: Only cases opened strictly before this time (exclusive), RFC 3339.
+          description: |
+            Only cases opened strictly before this time (exclusive), RFC 3339. Colons may be sent unencoded
+            (`2026-11-04T12:00:00Z`). Encode a `+` offset as `%2B`, or use `Z`: in a
+            query string a raw `+` means a space.
+          allowReserved: true
           schema:
             type: string
             format: date-time
