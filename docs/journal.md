@@ -222,3 +222,9 @@ The two slices (auth, rate limits) ran in parallel on opus in worktrees. Integra
 - **Manual run on `make run`:** the Copilot query, ARR with and without the scope, warehouse down (degraded), and case system down (breaker open, readiness reporting it) all behaved as specified.
 
 **Open questions.** The `noUsageData` example's `asOf` (contract follow-up).
+
+## 2026-11-07 — Comments and webhooks: spec
+
+**What was done.** Drafted S4 for its own spec PR: idempotent comment create (atomic key claim, successes stored, external-ID dedupe upstream), subscriptions seeded from config with secrets in the environment, enqueue inside the caller's transaction, a dispatcher with the contract's retry schedule, and a reference receiver.
+
+**Open questions.** The seven decisions in S4 §5 are confirmed by merging the spec PR.
