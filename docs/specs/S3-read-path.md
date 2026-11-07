@@ -18,7 +18,7 @@ The sample question has a fixed answer (S1 §4). This spec is done when the API 
 ### 2.1 Ports and adapters (`src/ports/`, `src/adapters/`)
 | Port | Operations | Adapter does |
 |---|---|---|
-| `CaseSystem` | `search(filters)` returns every matching record (follows `nextRecordsUrl`); `get(caseId)` | Normalises mixed casing (`Status`, `Comments`) to the canonical model; ETag = `"` + base64url(`caseId:version`) + `"`; maps upstream errors to failure classes (§2.3) |
+| `CaseSystem` | `search(query)` returns one sorted page (filters, account list, sort, "after" position, limit); `get(caseId)` | Normalises mixed casing (`Status`, `Comments`) to the canonical model; ETag = `"` + base64url(`caseId:version`) + `"`; maps upstream errors to failure classes (§2.3) |
 | `EntitlementSource` | `snapshot()` returns the last good snapshot and its health | Fetches the CSV and XML, parses, normalises IDs and applies precedence (§2.2) |
 | `UsageWarehouse` | `monthlyUsage(accountId, months)` | Sends the one allow-listed parameterised statement (`LIMIT 2`); maps rows to canonical usage |
 
@@ -34,17 +34,18 @@ Domain code (joins, filters, the usage trend, cursors) lives in `src/domain/`, h
 - **ARR stays in the snapshot.** Whether a response includes it is decided at the response boundary (§2.4), never in the snapshot.
 
 ### 2.3 Resilience (cockatiel 4.0.0, Gate 3a)
-Each upstream gets its own policy: a timeout per attempt, retries, and a circuit breaker. The whole request has a **5 second budget**: a retry starts only if its timeout fits in the time left.
+Each upstream gets its own policy: a timeout per attempt, retries, and a circuit breaker. The whole request has a **10 second budget** (`REQUEST_BUDGET_MS`, so it can be set below whatever gateway or agent timeout sits in front): a retry starts only if its timeout fits in the time left.
 
 | Upstream | Timeout per attempt | Retries | Breaker |
 |---|---|---|---|
-| Case system | 2 s | 2 (3 attempts) | Opens after 5 consecutive failures; half-open after 10 s |
-| Usage warehouse | 1.5 s | 1 | Same |
+| Case system (required) | 3 s | 2 (3 attempts) | Opens after 5 consecutive failures; half-open after 10 s |
+| Usage warehouse (optional) | 1.5 s | 1 (2 attempts) | Same |
 | Entitlement (background poll, not on the request path) | 5 s | 2 | None: the snapshot is the fallback |
 
 - **Backoff:** exponential from 100 ms, full jitter, capped at 1 s.
+- **Retries are few on purpose:** each one adds load to an upstream that is already struggling. The optional warehouse gets one, because its latency is the customer summary's latency and a degraded answer beats a late one.
 - **Retried, and counted as breaker failures:** timeouts, network errors and 5xx.
-- **429:** retried only after its `Retry-After`, and only if that fits in the budget; otherwise 503 `upstream-unavailable` with the upstream's `Retry-After` passed on. 429 never counts toward the breaker: it means "slow down", not "broken".
+- **429 also counts as a breaker failure.** The upstream sees one caller (the platform's integration credential with its shared quota), so a 429 means the platform as a whole must slow down. It is retried only after its `Retry-After`, and only if that fits in the budget; otherwise 503 `upstream-unavailable` with the upstream's `Retry-After` passed on. One heavy consumer could still use up the shared quota and open the breaker for everyone: the guard is our per-client and per-agent limits, which must stay below each caller's share of the upstream quota (PLATFORM.md). With per-user upstream credentials this would change: 429 would stop counting, and only the affected user would back off.
 - **Never retried and never counted:** other 4xx. A 404 is an answer, not an outage. Any other 4xx means our request was wrong, so it is logged and becomes a 502.
 - **Breaker transitions** (closed → open → half-open → closed) are logged with the upstream's name.
 - **Mapping to problems,** for a required upstream:
@@ -66,12 +67,10 @@ Each upstream gets its own policy: a timeout per attempt, retries, and a circuit
 - **`sources[]`:** export, feed and warehouse, each with `status`, `asOf` and the `fields` it supplied. The feed is `no_data` when the XML has no row for the account.
 
 ### 2.5 `GET /v1/cases`
-1. Pass the filters the case system supports upstream: status, priority, account and opened range.
-2. Fetch every matching upstream page, up to **1,000 records**. Beyond that, respond 400 `validation-failed` asking for narrower filters. A full scan can't be paged correctly, and a silently truncated result would drop matches.
-3. Join `account` (name, tier, renewal) from the snapshot. A case whose account has no entitlement record gets `account: null` and is reported as unmatched.
-4. Apply the cross-system filters `accountTier` and `renewalWithinDays`: today through today + N days, UTC dates, inclusive, with "today" from the injected clock. A case with `account: null` never matches them.
-5. Sort by the requested key, with case ID as the tie-break. `priority` ascending means P1 first.
-6. Keyset page: return the records after the cursor's position, up to `limit`.
+Every filter runs in the case system, so it returns exactly one page and nothing is scanned in memory.
+1. **Entitlement filters become an account list.** `accountTier` and `renewalWithinDays` (today through today + N days, UTC dates, inclusive, "today" from the injected clock) are resolved against the snapshot into the matching canonical account IDs, intersected with `accountId` if given. An empty list returns an empty page without calling upstream. More than **500 accounts** gets 400 `validation-failed` asking for narrower filters, because the upstream query would be too long; the fix at that scale is a joined read model (ADR-0002).
+2. **One upstream query** with status, priority, opened range, the account list, the sort (case ID as tie-break; `priority` ascending means P1 first), the cursor's "after" position and `limit + 1` (the extra record says whether a next page exists). Salesforce queries support all of these (`IN`, `ORDER BY`, keyset `WHERE`), so the mock case system gains a repeatable `accountId`, a sort and an "after" parameter.
+3. **Join `account`** (name, tier, renewal) from the snapshot onto the page. A case whose account has no entitlement record gets `account: null` and is reported as unmatched; it can never match an entitlement filter, since its account is not in the list.
 
 - **Cursor:** base64url JSON `{ v: 1, k: [sortValue, caseId], f: fingerprint }`, unsigned (decision 17). The fingerprint is a SHA-256 over the normalised filters, the sort, and the date that `renewalWithinDays` was resolved against. A different fingerprint, or a cursor that can't be decoded, gets 400 `invalid-cursor`. `limit` may change between pages.
 - **Keyset semantics:** a case created or changed behind the cursor's position after the first page isn't seen until the next search. That is standard for keyset paging and is documented in the operation description.
@@ -89,7 +88,7 @@ Each upstream gets its own policy: a timeout per attempt, retries, and a circuit
 - `unmatchedAccountIds`: the set from §2.2, sorted.
 
 ### 2.8 Config
-New variables, validated at start-up: `ENTITLEMENT_REFRESH_SECONDS` (≥ 1). Upstream base URLs already exist. Timeouts and retry counts are constants in one file, not env: they're design decisions, reviewed with the code.
+New variables, validated at start-up: `ENTITLEMENT_REFRESH_SECONDS` (≥ 1) and `REQUEST_BUDGET_MS` (default 10000). Upstream base URLs already exist. Per-attempt timeouts and retry counts are constants in one file, not env: they're design decisions, reviewed with the code. The budget is env because it depends on what sits in front of the service.
 
 **Out of scope:**
 - comments and the write path (the comments PR);
@@ -108,10 +107,10 @@ New variables, validated at start-up: `ENTITLEMENT_REFRESH_SECONDS` (≥ 1). Ups
 | S3-3 | `GET /v1/customers/ACC-007` returns `arr` with `finance:read` and omits it without; the body without the scope contains no ARR amount. |
 | S3-4 | Warehouse down → 200, `usage: null`, `degraded: true`, warehouse source `unavailable`. ACC-015 (no usage rows) → `usage: null`, source `no_data`, `degraded: false`. |
 | S3-5 | Snapshot never loaded or CSV older than 48h → `getCustomer` gives 503 `entitlement-stale`; `listCases` with an entitlement filter gives 503 `entitlement-stale`; without one, 200 with `account: null` and `degraded: true`. A failed refresh keeps the last good snapshot and marks the source `stale`. |
-| S3-6 | Retries happen only for timeouts, network errors, 5xx and 429; a 4xx is never retried. 429 waits for `Retry-After`, or gives 503 with `Retry-After` when that doesn't fit in the budget. Backoff is exponential with jitter. |
-| S3-7 | The breaker opens after 5 consecutive failures, goes half-open after 10s, and closes on a successful probe. Each transition is logged. 4xx and 429 never open it. A test drives open → half-open → closed on the injected clock. |
+| S3-6 | Retries happen only for timeouts, network errors, 5xx and 429, at most 2 for cases and 1 for the warehouse, and only within the request budget; a 4xx is never retried. 429 waits for `Retry-After`, or gives 503 with `Retry-After` when that doesn't fit in the budget. Backoff is exponential with jitter. |
+| S3-7 | The breaker opens after 5 consecutive failures, goes half-open after 10s, and closes on a successful probe. Each transition is logged. 429s count toward opening it; other 4xx never do. A test drives open → half-open → closed on the injected clock. |
 | S3-8 | Failures map to problems as in §2.3: breaker open → 503 with `Retry-After`; timeout → 504; 5xx or a bad body → 502. No upstream body reaches the response or the logs. |
-| S3-9 | Paging through the Copilot query with `limit=2` returns all five cases exactly once, in order. A cursor reused with a changed filter or sort, or a tampered cursor, gets 400 `invalid-cursor`. Ties on `openedAt` are ordered by case ID. |
+| S3-9 | Paging through the Copilot query with `limit=2` returns all five cases exactly once, in order. A cursor reused with a changed filter or sort, or a tampered cursor, gets 400 `invalid-cursor`. Ties on `openedAt` are ordered by case ID. Entitlement filters reach the mock as an account list (no full scan); more than 500 matching accounts gets 400. |
 | S3-10 | Filter boundaries hold: `openedBefore` is exclusive and `openedAfter` inclusive (a case opened exactly at the bound); `renewalWithinDays=89` includes ACC-012 and excludes ACC-015; a renewal in the past never matches. |
 | S3-11 | `GET /v1/cases/CS-10231` returns the canonical case, an `ETag` derived from its version, comments newest last, and `commentCount`. Unknown case → 404. No upstream field names (`Status`, `Comments`) appear in any response. |
 | S3-12 | `/readyz` reports the snapshot and the breaker states, fails only on the database or the snapshot, and lists ACC-099 as unmatched once a read has seen it. |
@@ -122,16 +121,17 @@ New variables, validated at start-up: `ENTITLEMENT_REFRESH_SECONDS` (≥ 1). Ups
 - Make `openedBefore` inclusive, or change the renewal window by one day.
 - Ignore precedence (CSV only) or skip the crosswalk.
 - Return ARR without checking `finance:read`.
-- Count a 4xx toward the breaker, or retry a 4xx.
+- Count a 4xx other than 429 toward the breaker, or retry a 4xx.
 - Ignore `Retry-After` on 429.
 - Leave the filters out of the cursor fingerprint.
+- Drop the account list from the upstream query (the tier and renewal filters stop applying).
 - Treat the warehouse as required (a 503 instead of degraded).
 
 ## 5. Decisions taken in this spec (to confirm by merging)
-1. **Request budget 5 s; per-attempt timeouts 2 s for cases and 1.5 s for the warehouse; 2 and 1 retries.** These are numbers for a mock; PLATFORM.md would set them from upstream latency SLOs.
+1. **Request budget 10 s (configurable); per attempt 3 s × 3 attempts for cases, 1.5 s × 2 for the warehouse.** Worst cases, not typical latency; PLATFORM.md sets latency targets from upstream SLOs.
 2. **Breaker: 5 consecutive failures, 10 s half-open.** Consecutive, not a rate, because it's easy to explain and test. A sampling breaker (failure rate over a window) is the production choice at real traffic.
-3. **A 429 never trips the breaker,** and an unexpected 4xx becomes a 502 without counting: our bug shouldn't open a circuit against a healthy upstream.
-4. **More than 1,000 upstream records → 400 asking for narrower filters,** rather than truncating silently. The read model (deferred) removes the limit.
+3. **A 429 counts toward the breaker,** because the upstream's quota is the platform's, shared by every caller; per-caller limits keep one consumer from using it all. An unexpected 4xx becomes a 502 without counting: our bug shouldn't open a circuit against a healthy upstream.
+4. **Search pushes every filter to the case system,** turning entitlement filters into an account list (400 above 500 accounts). The case system sorts and pages, so there is no in-memory scan or record cap.
 5. **The cursor binds the date `renewalWithinDays` was resolved against,** so a cursor from yesterday gets `invalid-cursor` instead of a page computed with a different window.
 6. **Readiness reads breaker state rather than probing upstreams,** and only the database and snapshot fail it.
 7. **The snapshot loads in the background;** start-up doesn't block on the ERP.
