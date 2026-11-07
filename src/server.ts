@@ -12,11 +12,14 @@ import {
 import { createSecurityHandler } from './auth/security-handler.js';
 import { createVerifier } from './auth/verify.js';
 import { createUpstreams, type Upstreams } from './adapters/index.js';
+import { createDispatcher, type Dispatcher } from './events/dispatcher.js';
+import { upsertSubscription } from './events/subscription.js';
 import { systemClock, type Clock } from './clock.js';
 import { ConfigError, loadConfig, type Config } from './config.js';
 import { createApp, type OperationHandlers } from './http/app.js';
 import { getCaseHandler } from './http/handlers/case-detail.js';
 import { listCasesHandler } from './http/handlers/cases.js';
+import { addCaseCommentHandler } from './http/handlers/comments.js';
 import { getCustomerHandler } from './http/handlers/customers.js';
 import { createRateLimiter } from './http/rate-limit.js';
 import { createLogger, type Logger } from './observability/logger.js';
@@ -51,6 +54,20 @@ export async function startServer(
 
   const clock = options.clock ?? systemClock();
   const upstreams = createUpstreams({ config, clock, logger });
+  // The case.escalated subscription comes from config (S4 §2.2); the dispatcher
+  // runs only when one is configured.
+  upsertSubscription(db, config, clock);
+  const dispatcher: Dispatcher | undefined =
+    config.webhook === undefined
+      ? undefined
+      : createDispatcher({
+          db,
+          clock,
+          logger,
+          secret: config.webhook.secret,
+          intervalMs: config.webhookDispatchIntervalMs,
+        });
+  dispatcher?.start();
   // First load, then polling, in the background: start-up neither waits for nor
   // requires it, so liveness answers even when the ERP hangs. Until the first
   // load succeeds, readiness reports the snapshot unavailable (S3 §2.2).
@@ -82,6 +99,7 @@ export async function startServer(
       getCustomer: getCustomerHandler(readDeps),
       listCases: listCasesHandler(readDeps),
       getCase: getCaseHandler(readDeps),
+      addCaseComment: addCaseCommentHandler({ ...readDeps, db }),
       // Tests may replace any operation.
       ...options.handlers,
     },
@@ -91,8 +109,10 @@ export async function startServer(
     const s = app.listen(config.port, (error) => {
       if (error) {
         upstreams.entitlement.stop();
-        db.close();
-        reject(error);
+        void (dispatcher?.stop() ?? Promise.resolve()).finally(() => {
+          db.close();
+          reject(error);
+        });
       } else resolve(s);
     });
   });
@@ -110,10 +130,13 @@ export async function startServer(
       deadline.unref();
       server.close((error) => {
         clearTimeout(deadline);
-        db.close();
-        logger.info('shutdown complete');
-        if (error) reject(error);
-        else resolve();
+        // Waits for in-flight deliveries before the database closes (S4-9).
+        void (dispatcher?.stop() ?? Promise.resolve()).finally(() => {
+          db.close();
+          logger.info('shutdown complete');
+          if (error) reject(error);
+          else resolve();
+        });
       });
       server.closeIdleConnections();
     });

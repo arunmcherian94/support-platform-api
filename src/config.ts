@@ -21,6 +21,9 @@ export interface Config {
   requestBudgetMs: number;
   /** How often the entitlement feeds are polled (ADR-0003). */
   entitlementRefreshSeconds: number;
+  /** The single case.escalated subscription, if any (S4 §2.2). */
+  webhook?: { url: string; secret: string };
+  webhookDispatchIntervalMs: number;
 }
 
 export class ConfigError extends Error {
@@ -98,6 +101,20 @@ export function loadConfig(env: Env = process.env): Config {
         throw new ConfigError(name, 'is required when NODE_ENV=production');
     }
   }
+  const webhookUrl = read(env, 'WEBHOOK_URL', '');
+  let webhook: { url: string; secret: string } | undefined;
+  if (webhookUrl !== '') {
+    const secret = read(env, 'WEBHOOK_SECRET', '');
+    // Standard Webhooks secret: whsec_ + base64 of at least 24 bytes.
+    const match = /^whsec_([A-Za-z0-9+/]+={0,2})$/.exec(secret);
+    if (match?.[1] === undefined || Buffer.from(match[1], 'base64').length < 24) {
+      throw new ConfigError(
+        'WEBHOOK_SECRET',
+        'must be whsec_ + base64 (24+ bytes) when WEBHOOK_URL is set',
+      );
+    }
+    webhook = { url: url(env, 'WEBHOOK_URL', webhookUrl), secret };
+  }
   return {
     nodeEnv,
     port,
@@ -120,6 +137,8 @@ export function loadConfig(env: Env = process.env): Config {
     shutdownReadinessDelayMs: integer(env, 'SHUTDOWN_READINESS_DELAY_MS', 0, 0, 60_000),
     requestBudgetMs: integer(env, 'REQUEST_BUDGET_MS', 10_000, 100, 120_000),
     entitlementRefreshSeconds: integer(env, 'ENTITLEMENT_REFRESH_SECONDS', 900, 1, 86_400),
+    ...(webhook === undefined ? {} : { webhook }),
+    webhookDispatchIntervalMs: integer(env, 'WEBHOOK_DISPATCH_INTERVAL_MS', 1000, 50, 60_000),
     rateLimit: {
       clientPerMinute: integer(env, 'RATE_LIMIT_CLIENT_PER_MINUTE', 100, 1, 100_000),
       agentPerMinute: integer(env, 'RATE_LIMIT_AGENT_PER_MINUTE', 30, 1, 100_000),
