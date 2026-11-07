@@ -67,14 +67,17 @@ afterEach(async () => {
   mocks = undefined;
 });
 
+let clock = fixedClock(FIXTURE_NOW);
+
 async function start(options: { entitlementDown?: boolean } = {}): Promise<void> {
+  clock = fixedClock(FIXTURE_NOW);
   mocks = await startMocks();
   if (options.entitlementDown === true) {
     mocks.mock.faults.update('entitlement', { forceStatus: 503 });
   }
   ({ running, auth } = await startServerWithAuth(captureLogs().logger, {
     env: { MOCKS_URL: mocks.url },
-    clock: fixedClock(FIXTURE_NOW),
+    clock,
   }));
   if (options.entitlementDown !== true) await waitForReady(running.url);
 }
@@ -237,6 +240,8 @@ describe('cross-system edge cases', () => {
     const intersected = await list('accountTier=platinum&accountId=ACC-021');
     expect(intersected.data).toEqual([]);
     expect(mocks?.caseCalls).toEqual([]);
+    // Not read, so not listed as a source.
+    expect(body.sources.map((x) => x.system)).toEqual(['entitlement_export', 'entitlement_feed']);
   });
 
   it('shows a case with no entitlement record with account null and reports it as unmatched', async () => {
@@ -294,5 +299,24 @@ describe('case system failure', () => {
     expect(res.status).toBe(502);
     expect(JSON.parse(res.text)).toMatchObject({ type: type('upstream-error') });
     expect(res.text).not.toContain('errorCode');
+  });
+});
+
+describe('entitlement too old (S3-5, list part)', () => {
+  it('past 48 hours: refuses entitlement filters, degrades without them, both feeds stale', async () => {
+    await start();
+    // The export is from 2026-11-06T02:00Z; one minute past the limit.
+    clock.set('2026-11-08T02:01:00Z');
+    const token = await running?.issuer?.mint({
+      sub: 'jdoe',
+      clientId: 'support-console',
+      scopes: ['cases:read'],
+    });
+    auth = { authorization: `Bearer ${token ?? ''}` };
+    expect((await problem('accountTier=platinum')).type).toBe(type('entitlement-stale'));
+    const body = await list('priority=P1');
+    expect(body.degraded).toBe(true);
+    expect(body.data.every((c) => c.account === null)).toBe(true);
+    expect(body.sources.slice(1).map((x) => x.status)).toEqual(['stale', 'stale']);
   });
 });

@@ -130,7 +130,8 @@ export function listCasesHandler(deps: ReadDeps): RequestHandler {
         return;
       }
       if (resolved.accountIds.length === 0) {
-        res.json({ data: [], nextCursor: null, degraded: false, sources });
+        // The case system wasn't read, so it isn't listed as a source.
+        res.json({ data: [], nextCursor: null, degraded: false, sources: sources.slice(1) });
         return;
       }
       accountIds = resolved.accountIds;

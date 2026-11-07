@@ -44,10 +44,10 @@ describe('entitlement sources', () => {
     ]);
   });
 
-  it('marks a too-old export stale and a never-loaded snapshot unavailable', () => {
-    expect(entitlementSources({ usable: false, reason: 'too_old', snapshot })[0]?.status).toBe(
-      'stale',
-    );
+  it('marks both feeds stale when the export is too old, and a never-loaded snapshot unavailable', () => {
+    expect(
+      entitlementSources({ usable: false, reason: 'too_old', snapshot }).map((x) => x.status),
+    ).toEqual(['stale', 'stale']);
     expect(entitlementSources({ usable: false, reason: 'never_loaded' })).toEqual([
       { system: 'entitlement_export', status: 'unavailable', asOf: null },
       { system: 'entitlement_feed', status: 'unavailable', asOf: null },

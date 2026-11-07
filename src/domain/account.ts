@@ -42,8 +42,9 @@ function feedSource(
 ): SourceStatus {
   if (feed === undefined || feed.asOf === null)
     return { system, status: 'unavailable', asOf: null };
-  // A snapshot past the 48-hour limit is reported stale, whatever its last refresh did.
-  const status = tooOld && system === 'entitlement_export' ? 'stale' : feed.status;
+  // Past the 48-hour limit no entitlement data is used, so both feeds read stale,
+  // whatever their last refresh did (S3 §2.5).
+  const status = tooOld ? 'stale' : feed.status;
   return { system, status, asOf: feed.asOf };
 }
 
