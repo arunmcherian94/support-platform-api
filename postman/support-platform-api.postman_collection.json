@@ -1,0 +1,792 @@
+{
+  "info": {
+    "name": "Support Platform API",
+    "description": "Functional and regression checks. Run against `make run` (fixture clock, dev issuer on): `npx newman run postman/support-platform-api.postman_collection.json`. Requests run in order; the setup folder fetches tokens from the dev issuer.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://127.0.0.1:8080"
+    },
+    {
+      "key": "supportToken",
+      "value": ""
+    },
+    {
+      "key": "financeToken",
+      "value": ""
+    },
+    {
+      "key": "ipaasToken",
+      "value": ""
+    },
+    {
+      "key": "idemKey",
+      "value": ""
+    },
+    {
+      "key": "commentId",
+      "value": ""
+    },
+    {
+      "key": "nextCursor",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Setup",
+      "item": [
+        {
+          "name": "Token: support-console",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 with an access token', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.collectionVariables.set('supportToken', pm.response.json().access_token);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "support-console"
+                },
+                {
+                  "key": "password",
+                  "value": "dev-only-support-console-secret"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "url": "{{baseUrl}}/dev/oauth/token",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "grant_type",
+                  "value": "client_credentials"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Token: finance-app",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 with an access token', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.collectionVariables.set('financeToken', pm.response.json().access_token);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "finance-app"
+                },
+                {
+                  "key": "password",
+                  "value": "dev-only-finance-app-secret"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "url": "{{baseUrl}}/dev/oauth/token",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "grant_type",
+                  "value": "client_credentials"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Token: ipaas-flow",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 with an access token', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.collectionVariables.set('ipaasToken', pm.response.json().access_token);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "ipaas-flow"
+                },
+                {
+                  "key": "password",
+                  "value": "dev-only-ipaas-flow-secret"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "url": "{{baseUrl}}/dev/oauth/token",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "grant_type",
+                  "value": "client_credentials"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Functional",
+      "item": [
+        {
+          "name": "Liveness",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('200', () => pm.response.to.have.status(200));"]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [],
+            "url": "{{baseUrl}}/healthz"
+          }
+        },
+        {
+          "name": "Customer 360 (support: no ARR)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const b = pm.response.json();",
+                  "pm.test('200 with merged fields', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(b.id).to.eql('ACC-007');",
+                  "  pm.expect(b.supportTier).to.eql('platinum');",
+                  "  pm.expect(b.usage.latestMonth).to.eql('2026-10');",
+                  "});",
+                  "pm.test('every field names its source', () => {",
+                  "  pm.expect(b.sources.map((s) => s.system)).to.include.members(['entitlement_export', 'entitlement_feed', 'usage_warehouse']);",
+                  "});",
+                  "pm.test('ARR hidden without finance:read', () => pm.expect(b).to.not.have.property('arr'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{supportToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": "{{baseUrl}}/v1/customers/ACC-007"
+          }
+        },
+        {
+          "name": "Customer 360 (finance: ARR shown)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('ARR present as a decimal string', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().arr).to.eql({ amount: '480000.00', currency: 'USD' });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{financeToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": "{{baseUrl}}/v1/customers/ACC-007"
+          }
+        },
+        {
+          "name": "Search cases, page 1",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const b = pm.response.json();",
+                  "pm.test('2 cases for the account and a cursor', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(b.data).to.have.lengthOf(2);",
+                  "  b.data.forEach((c) => pm.expect(c.accountId).to.eql('ACC-007'));",
+                  "  pm.expect(b.nextCursor).to.be.a('string');",
+                  "});",
+                  "pm.collectionVariables.set('nextCursor', b.nextCursor);",
+                  "pm.collectionVariables.set('page1Ids', JSON.stringify(b.data.map((c) => c.id)));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{supportToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": "{{baseUrl}}/v1/cases?accountId=ACC-007&limit=2"
+          }
+        },
+        {
+          "name": "Search cases, page 2",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const first = JSON.parse(pm.collectionVariables.get('page1Ids'));",
+                  "pm.test('next page does not repeat page 1', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.response.json().data.forEach((c) => pm.expect(first).to.not.include(c.id));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{supportToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": "{{baseUrl}}/v1/cases?accountId=ACC-007&limit=2&cursor={{nextCursor}}"
+          }
+        },
+        {
+          "name": "Case detail",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const b = pm.response.json();",
+                  "pm.test('200 with account context and comments', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(b.account.supportTier).to.eql('platinum');",
+                  "  pm.expect(b.comments.length).to.eql(b.commentCount);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{supportToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": "{{baseUrl}}/v1/cases/CS-10231"
+          }
+        },
+        {
+          "name": "Add comment",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('idemKey', pm.variables.replaceIn('{{$guid}}'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 with Location, author from the token', () => {",
+                  "  pm.response.to.have.status(201);",
+                  "  pm.expect(pm.response.headers.get('Location')).to.match(/^\\/v1\\/cases\\/CS-10231\\/comments\\//);",
+                  "  pm.expect(pm.response.json().author).to.eql('jdoe');",
+                  "});",
+                  "pm.collectionVariables.set('commentId', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{supportToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idemKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"body\":\"Collection run: checking in.\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/v1/cases/CS-10231/comments"
+          }
+        },
+        {
+          "name": "Add comment, retried with the same key",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('replays the first response, no duplicate', () => {",
+                  "  pm.response.to.have.status(201);",
+                  "  pm.expect(pm.response.headers.get('Idempotent-Replayed')).to.eql('true');",
+                  "  pm.expect(pm.response.json().id).to.eql(pm.collectionVariables.get('commentId'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{supportToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idemKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"body\":\"Collection run: checking in.\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/v1/cases/CS-10231/comments"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Regression",
+      "item": [
+        {
+          "name": "No token: 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401 unauthorized problem', () => {",
+                  "  pm.response.to.have.status(401);",
+                  "  pm.expect(pm.response.headers.get('Content-Type')).to.include('application/problem+json');",
+                  "  pm.expect(pm.response.json().type).to.match(/\\/unauthorized$/);",
+                  "});",
+                  "pm.test('WWW-Authenticate set', () => pm.response.to.have.header('WWW-Authenticate'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [],
+            "url": "{{baseUrl}}/v1/cases"
+          }
+        },
+        {
+          "name": "Missing scope: 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403 insufficient-scope problem', () => {",
+                  "  pm.response.to.have.status(403);",
+                  "  pm.expect(pm.response.headers.get('Content-Type')).to.include('application/problem+json');",
+                  "  pm.expect(pm.response.json().type).to.match(/\\/insufficient-scope$/);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{ipaasToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": "{{baseUrl}}/v1/customers/ACC-007"
+          }
+        },
+        {
+          "name": "Limit above maximum: 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 validation-failed problem', () => {",
+                  "  pm.response.to.have.status(400);",
+                  "  pm.expect(pm.response.headers.get('Content-Type')).to.include('application/problem+json');",
+                  "  pm.expect(pm.response.json().type).to.match(/\\/validation-failed$/);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{supportToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": "{{baseUrl}}/v1/cases?limit=999"
+          }
+        },
+        {
+          "name": "Cursor reused with different filters: 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 invalid-cursor problem', () => {",
+                  "  pm.response.to.have.status(400);",
+                  "  pm.expect(pm.response.headers.get('Content-Type')).to.include('application/problem+json');",
+                  "  pm.expect(pm.response.json().type).to.match(/\\/invalid-cursor$/);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{supportToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": "{{baseUrl}}/v1/cases?accountId=ACC-099&limit=2&cursor={{nextCursor}}"
+          }
+        },
+        {
+          "name": "Unknown case: 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('404 not-found problem', () => {",
+                  "  pm.response.to.have.status(404);",
+                  "  pm.expect(pm.response.headers.get('Content-Type')).to.include('application/problem+json');",
+                  "  pm.expect(pm.response.json().type).to.match(/\\/not-found$/);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{supportToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": "{{baseUrl}}/v1/cases/CS-99999"
+          }
+        },
+        {
+          "name": "Comment without Idempotency-Key: 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 idempotency-key-required problem', () => {",
+                  "  pm.response.to.have.status(400);",
+                  "  pm.expect(pm.response.headers.get('Content-Type')).to.include('application/problem+json');",
+                  "  pm.expect(pm.response.json().type).to.match(/\\/idempotency-key-required$/);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{supportToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"body\":\"no key\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/v1/cases/CS-10231/comments"
+          }
+        },
+        {
+          "name": "Same key, different body: 422",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('422 idempotency-key-reused problem', () => {",
+                  "  pm.response.to.have.status(422);",
+                  "  pm.expect(pm.response.headers.get('Content-Type')).to.include('application/problem+json');",
+                  "  pm.expect(pm.response.json().type).to.match(/\\/idempotency-key-reused$/);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{supportToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idemKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"body\":\"a different comment\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/v1/cases/CS-10231/comments"
+          }
+        },
+        {
+          "name": "Correlation ID echoed",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('X-Request-Id echoed', () => pm.expect(pm.response.headers.get('X-Request-Id')).to.eql('postman-check-1'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [
+              {
+                "key": "X-Request-Id",
+                "value": "postman-check-1"
+              }
+            ],
+            "url": "{{baseUrl}}/healthz"
+          }
+        }
+      ]
+    }
+  ]
+}
