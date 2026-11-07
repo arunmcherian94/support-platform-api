@@ -210,3 +210,15 @@ The two slices (auth, rate limits) ran in parallel on opus in worktrees. Integra
 - **Size.** About 1,900 lines of source and mock code, above the ~400-line guideline, mostly explicit validation of upstream shapes and the two parsers.
 
 **Open questions.** None; minor follow-ups are listed in the PR.
+
+## 2026-11-07 — PR 5b: read endpoints
+
+**What was done.** S3-1, S3-3, S3-4, S3-5, S3-9, S3-10, S3-11 and S3-14: the customer summary (ARR by `finance:read`, degraded vs no data), case search (entitlement filters as an account list, keyset cursors bound to filters, sort and resolved date) and get-case (`ETag`, newest 50 comments). Two parallel opus slices on a shared base. Both slices were lost to a session restart before writing anything and were resumed in their worktrees.
+
+**What changed and why.**
+- **My shared query helper assumed raw strings;** the validator coerces integers, so `renewalWithinDays` and `limit` read as absent. Caught by a slice's test; fixed in the helper.
+- **The contract's Copilot example fails as written** (raw colons). Fixed in a separate contract PR (`allowReserved` on the two timestamps), decided in session.
+- **Fresh review:** 0 critical, 1 major (the 500-account guard untested at the handler), 5 minor. Fixed the major and four minors.
+- **Manual run on `make run`:** the Copilot query, ARR with and without the scope, warehouse down (degraded), and case system down (breaker open, readiness reporting it) all behaved as specified.
+
+**Open questions.** The `noUsageData` example's `asOf` (contract follow-up).

@@ -76,3 +76,6 @@ Each row: the rule broken on purpose, and the test that failed. Reverted after e
 | Treat the warehouse as required (503 instead of degraded) | `tests/http/get-customer.test.ts` (2 tests) | 5b |
 | Return the oldest 50 comments, or newest first | `tests/http/get-case.test.ts` (2 tests) | 5b |
 | Read a coerced query integer as absent | `tests/http/list-cases.test.ts` (S3-5), `tests/http/query-helpers.test.ts` | 5b |
+| Make `openedBefore` inclusive (enforced in the case-system query; a real adapter must emit `<`) | `tests/http/list-cases.test.ts` (S3-10 exact-instant test) | 5b review |
+| Return an empty page instead of 400 above 500 accounts | `tests/http/list-cases-limits.test.ts` | 5b review |
+| Keep the feed's own status when the export is too old | `tests/domain/account.test.ts`, `tests/http/list-cases.test.ts` (too old) | 5b review |
