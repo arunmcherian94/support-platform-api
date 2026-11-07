@@ -15,6 +15,9 @@ import { createUpstreams, type Upstreams } from './adapters/index.js';
 import { systemClock, type Clock } from './clock.js';
 import { ConfigError, loadConfig, type Config } from './config.js';
 import { createApp, type OperationHandlers } from './http/app.js';
+import { getCaseHandler } from './http/handlers/case-detail.js';
+import { listCasesHandler } from './http/handlers/cases.js';
+import { getCustomerHandler } from './http/handlers/customers.js';
 import { createRateLimiter } from './http/rate-limit.js';
 import { createLogger, type Logger } from './observability/logger.js';
 import { openDatabase } from './store/db.js';
@@ -52,6 +55,7 @@ export async function startServer(
   // requires it, so liveness answers even when the ERP hangs. Until the first
   // load succeeds, readiness reports the snapshot unavailable (S3 §2.2).
   void upstreams.entitlement.start();
+  const readDeps = { upstreams, clock, logger };
   // Dev-only issuer, mounted only on request; config refuses it in production (S2-12).
   const issuer = devIssuerEnabled(config)
     ? await createDevIssuer({ config, clock, clients: loadDevClients() })
@@ -74,7 +78,13 @@ export async function startServer(
         agentPerMinute: config.rateLimit.agentPerMinute,
       }).check,
     }),
-    ...(options.handlers === undefined ? {} : { handlers: options.handlers }),
+    handlers: {
+      getCustomer: getCustomerHandler(readDeps),
+      listCases: listCasesHandler(readDeps),
+      getCase: getCaseHandler(readDeps),
+      // Tests may replace any operation.
+      ...options.handlers,
+    },
   });
   const server = await new Promise<Server>((resolve, reject) => {
     // Express 5 passes listen errors (e.g. EADDRINUSE) to the callback.
