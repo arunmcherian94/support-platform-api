@@ -250,3 +250,17 @@ describe('case adapter bad responses', () => {
     ).rejects.toMatchObject({ kind: 'bad_response' });
   });
 });
+
+describe('a non-JSON body never reaches the error or the logs (S3-8)', () => {
+  it('keeps no fragment of the upstream body', async () => {
+    const body = 'Acme Corp ARR 480000 jane.doe@acme.example';
+    const error = await createCaseSystem(fakeClient(body))
+      .get('CS-10231')
+      .catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(UpstreamError);
+    const { captureLogs } = await import('../http/helpers.js');
+    const logs = captureLogs();
+    logs.logger.error({ err: error }, 'unhandled error');
+    expect(logs.text()).not.toMatch(/Acme|480000|jane/);
+  });
+});

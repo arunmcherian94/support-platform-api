@@ -107,8 +107,9 @@ function parseComment(raw: unknown): CaseComment {
 function parseJson(text: string): unknown {
   try {
     return JSON.parse(text);
-  } catch (error) {
-    throw bad(error);
+  } catch {
+    // Not the SyntaxError: its message quotes part of the body (S3-8).
+    throw bad('body is not JSON');
   }
 }
 

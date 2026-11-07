@@ -95,3 +95,16 @@ describe('usage warehouse adapter', () => {
     ).rejects.toMatchObject({ upstream: 'usage_warehouse', kind: 'bad_response' });
   });
 });
+
+describe('a non-JSON body never reaches the error or the logs (S3-8)', () => {
+  it('keeps no fragment of the upstream body', async () => {
+    const error = await createUsageWarehouse(fakeClient('Acme Corp 480000'))
+      .monthlyUsage('ACC-007', 2)
+      .catch((e: unknown) => e);
+    const { captureLogs } = await import('../http/helpers.js');
+    const logs = captureLogs();
+    logs.logger.error({ err: error }, 'unhandled error');
+    expect(logs.text()).toContain('bad_response');
+    expect(logs.text()).not.toMatch(/Acme|480000/);
+  });
+});

@@ -53,8 +53,9 @@ export function createUsageWarehouse(client: UpstreamClient): UsageWarehouse {
       let body: unknown;
       try {
         body = JSON.parse(response.text);
-      } catch (error) {
-        throw bad(error);
+      } catch {
+        // Not the SyntaxError: its message quotes part of the body (S3-8).
+        throw bad('body is not JSON');
       }
       const data =
         typeof body === 'object' && body !== null ? (body as { data?: unknown }).data : undefined;
