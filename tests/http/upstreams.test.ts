@@ -9,7 +9,13 @@ import { toAppError, UpstreamError } from '../../src/adapters/errors.js';
 import { fixedClock } from '../../src/clock.js';
 import { AppError } from '../../src/http/problems.js';
 import type { RunningServer } from '../../src/server.js';
-import { captureLogs, FIXTURE_NOW, startRecordingMocks, startServerWithAuth } from './helpers.js';
+import {
+  captureLogs,
+  FIXTURE_NOW,
+  startRecordingMocks,
+  startServerWithAuth,
+  waitForReady,
+} from './helpers.js';
 
 let running: RunningServer | undefined;
 let auth: { authorization: string } = { authorization: '' };
@@ -30,12 +36,13 @@ interface Readiness {
 /** Starts mocks plus the real server; `getCase` reads the case through the adapter. */
 async function start(
   setup?: (m: NonNullable<typeof mocks>) => void,
+  env: Record<string, string> = {},
 ): Promise<{ logs: ReturnType<typeof captureLogs> }> {
   mocks = await startRecordingMocks();
   setup?.(mocks);
   const logs = captureLogs();
   ({ running, auth } = await startServerWithAuth(logs.logger, {
-    env: { MOCKS_URL: mocks.url },
+    env: { MOCKS_URL: mocks.url, ...env },
     clock: fixedClock(FIXTURE_NOW),
     handlers: {
       getCase: async (req: Request, res: Response, next: NextFunction) => {
@@ -69,6 +76,7 @@ const readiness = async (): Promise<{ status: number; body: Readiness }> => {
 describe('readiness with real upstreams (S3-12)', () => {
   it('is ready once the entitlement snapshot loads, reporting each upstream', async () => {
     await start();
+    await waitForReady(running?.url ?? '');
     const { status, body } = await readiness();
     expect(status).toBe(200);
     expect(body.checks).toEqual({
@@ -79,8 +87,14 @@ describe('readiness with real upstreams (S3-12)', () => {
     });
   });
 
-  it('is not ready while the snapshot has never loaded, and recovers on the next poll', async () => {
-    await start((m) => m.mock.faults.update('entitlement', { forceStatus: 503 }));
+  it('starts without the ERP, is not ready until a load succeeds, then recovers', async () => {
+    const began = performance.now();
+    await start((m) => m.mock.faults.update('entitlement', { forceStatus: 503, latencyMs: 1500 }), {
+      ENTITLEMENT_REFRESH_SECONDS: '1',
+    });
+    expect(performance.now() - began).toBeLessThan(1000);
+    // Start-up didn't wait for the ERP: liveness answers at once (S3 §2.2).
+    expect((await fetch(`${running?.url ?? ''}/healthz`)).status).toBe(200);
     const { status, body } = await readiness();
     expect(status).toBe(503);
     expect(body.checks.entitlementSnapshot).toBe('unavailable');
@@ -88,6 +102,9 @@ describe('readiness with real upstreams (S3-12)', () => {
       usable: false,
       reason: 'never_loaded',
     });
+    mocks?.mock.faults.reset();
+    await waitForReady(running?.url ?? '', 4000);
+    expect(running?.upstreams.entitlement.current().usable).toBe(true);
   });
 
   it('lists unmatched account IDs reported during reads', async () => {
@@ -120,6 +137,7 @@ describe('correlation reaches the upstream (S3-13)', () => {
 describe('breaker end to end against the mock (S3-7, S3-8)', () => {
   it('maps exhausted 5xx to 502, then opens: 503 with Retry-After, logged and in readiness', async () => {
     const { logs } = await start((m) => m.mock.faults.update('cases', { forceStatus: 500 }));
+    await waitForReady(running?.url ?? '');
     const call = () => fetch(`${running?.url ?? ''}/v1/cases/CS-10231`, { headers: auth });
 
     const first = await call(); // 3 attempts, all 500

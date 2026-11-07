@@ -52,7 +52,11 @@ export interface EntitlementSource {
   unmatchedAccountIds(): string[];
   /** Records a case account ID with no entitlement record (seen during reads). */
   reportUnmatched(accountId: string): void;
-  /** Loads once and starts polling. Resolves after the first attempt, success or not. */
+  /**
+   * Loads once and starts polling. Resolves after the first attempt, success or
+   * not, and never rejects. The server doesn't await it (start-up doesn't block
+   * on the ERP); tests may.
+   */
   start(): Promise<void>;
   stop(): void;
 }

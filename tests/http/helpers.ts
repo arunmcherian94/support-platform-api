@@ -167,3 +167,13 @@ export async function startRecordingMocks(): Promise<{
       }),
   };
 }
+
+/** Polls /readyz until it answers 200 (the entitlement snapshot loads in the background). */
+export async function waitForReady(url: string, timeoutMs = 5000): Promise<void> {
+  const start = performance.now();
+  while (performance.now() - start < timeoutMs) {
+    if ((await fetch(`${url}/readyz`)).status === 200) return;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error(`not ready after ${String(timeoutMs)} ms`);
+}

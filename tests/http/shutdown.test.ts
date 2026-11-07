@@ -8,6 +8,7 @@ import {
   startServerWithAuth,
   testConfig,
   VALID_CASE,
+  waitForReady,
 } from './helpers.js';
 
 describe('graceful shutdown (S2-10)', () => {
@@ -52,7 +53,7 @@ describe('readiness during shutdown', () => {
       captureLogs().logger,
       { clock: fixedClock(FIXTURE_NOW) },
     );
-    expect((await fetch(`${running.url}/readyz`)).status).toBe(200);
+    await waitForReady(running.url);
     const stopped = running.shutdown();
     const res = await fetch(`${running.url}/readyz`);
     expect(res.status).toBe(503);

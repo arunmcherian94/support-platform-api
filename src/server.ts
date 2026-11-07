@@ -48,9 +48,10 @@ export async function startServer(
 
   const clock = options.clock ?? systemClock();
   const upstreams = createUpstreams({ config, clock, logger });
-  // First load, then polling. Start-up doesn't require it to succeed: until it
-  // does, readiness reports the snapshot unavailable (S3 §2.2).
-  await upstreams.entitlement.start();
+  // First load, then polling, in the background: start-up neither waits for nor
+  // requires it, so liveness answers even when the ERP hangs. Until the first
+  // load succeeds, readiness reports the snapshot unavailable (S3 §2.2).
+  void upstreams.entitlement.start();
   // Dev-only issuer, mounted only on request; config refuses it in production (S2-12).
   const issuer = devIssuerEnabled(config)
     ? await createDevIssuer({ config, clock, clients: loadDevClients() })
