@@ -193,3 +193,9 @@ The two slices (auth, rate limits) ran in parallel on opus in worktrees. Integra
 - **The slices paused** when the permission system declined their first writes. They resumed after the human approved, with explicit worktree paths.
 
 **Open questions.** None.
+
+## 2026-11-07 — Read path: spec
+
+**What was done.** Drafted S3 (read path) for its own spec PR, before any code: adapters and the entitlement snapshot, resilience numbers and failure mapping, the three read endpoints, the cursor, and readiness.
+
+**Open questions.** The seven decisions in S3 §5 are confirmed by merging the spec PR.

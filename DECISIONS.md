@@ -37,6 +37,8 @@ Key trade-offs, assumptions and what was skipped, recorded at the time each deci
 | 29 | Gate 3a: pino JSON logs, correlation ID plus `traceparent` | Required correlation, ready for tracing later | S2 |
 | 31 | Response schemas are closed (`additionalProperties`/`unevaluatedProperties: false`), enforced at runtime and by a Spectral rule | An undeclared field such as ARR can't leak past the contract; clients still ignore unknown fields, so additions stay non-breaking | [ADR-0005](docs/adr/ADR-0005-api-contract-conventions.md) |
 | 30 | Critical-tier specs ship in their own PR, merged before code | Approving a design and approving code are different acts; the merge makes the design decision durable and visible | CLAUDE.md §11 |
+| 32 | Resilience numbers: 10 s request budget (configurable); cases 3 s × 3 attempts, warehouse 1.5 s × 2; breaker opens after 5 consecutive failures, half-open after 10 s; **429 counts as a breaker failure**, other 4xx never do | Few retries, so a struggling upstream isn't hammered; the optional warehouse fails fast to a degraded answer. The upstream's quota belongs to the platform, so a 429 means everyone slows down; per-caller limits must stay below each caller's share so one consumer can't open the breaker for all | [S3](docs/specs/S3-read-path.md) |
+| 33 | Case search pushes every filter to the case system; tier and renewal filters become an account list (400 above 500 accounts) | The case system sorts and pages, so one page needs one upstream call, with no in-memory scan or record cap | S3 |
 
 ## Data quirks and how they're handled
 - **Mixed casing in case JSON** (`Status`, `Comments` vs `openedAt`): normalised to canonical camelCase in the case adapter; upstream shapes never leave the adapter.
