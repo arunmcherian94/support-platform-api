@@ -144,9 +144,23 @@ function searchPath(query: CaseQuery): string {
 
 export function createCaseSystem(client: UpstreamClient): CaseSystem {
   return {
-    // Placeholder: slice F implements the write.
-    addComment(): Promise<never> {
-      return Promise.reject(new Error('addComment not implemented'));
+    async addComment(
+      caseId: string,
+      comment: { author: string; body: string },
+    ): Promise<CaseComment> {
+      // A single attempt: the upstream create isn't idempotent, so a retry
+      // could add the comment twice (S4 §2.1, decision 24).
+      const response = await client.request({
+        method: 'POST',
+        path: `/cases/${encodeURIComponent(caseId)}/comments`,
+        body: { body: comment.body, author: comment.author },
+        retryable: false,
+      });
+      const raw = parseJson(response.text);
+      if (!isRaw(raw)) throw bad('comment result is not an object');
+      if (raw.success !== true) throw bad('success is not true');
+      // The upstream echoes only id and time; author and body are what it accepted.
+      return parseComment({ id: raw.id, at: raw.at, author: comment.author, body: comment.body });
     },
     async search(query: CaseQuery): Promise<CasePage> {
       // Only the first upstream page is used; keyset paging replaces nextRecordsUrl.
