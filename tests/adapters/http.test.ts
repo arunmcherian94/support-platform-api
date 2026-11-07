@@ -114,6 +114,19 @@ describe('successes', () => {
 });
 
 describe('retries (S3-6)', () => {
+  it('waits the jittered backoff between attempts, not back to back', async () => {
+    // Full jitter: the first retry waits up to 100 ms; pin the random draw near the top.
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0.999);
+    const { client, calls } = setup([reply(503), reply(200, 'ok')]);
+    const pending = client.request({ path: '/cases' });
+    await vi.advanceTimersByTimeAsync(98);
+    expect(calls).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(2);
+    expect(calls).toHaveLength(2);
+    await expect(pending).resolves.toMatchObject({ status: 200 });
+    random.mockRestore();
+  });
+
   it.each([
     ['5xx', reply(503)],
     ['timeout', hang],
@@ -413,5 +426,17 @@ describe('propagation and logging (S3-13, S3-8)', () => {
     const error = await failure(client.request({ path: '/a' }));
     expect(error.message).not.toContain('SECRET-BODY');
     expect(JSON.stringify(error.info)).not.toContain('SECRET-BODY');
+  });
+});
+
+describe('upstream error codes', () => {
+  it('reads the code from a Salesforce-style error array, never the message', async () => {
+    const body = JSON.stringify([{ errorCode: 'MALFORMED_QUERY', message: 'secret detail' }]);
+    const { client, logs } = setup([reply(400, body)]);
+    const error = await failure(client.request({ path: '/cases?bad=1' }));
+    expect(error.kind).toBe('client_error');
+    const line = logs.lines().find((l) => l.kind === 'client_error');
+    expect(line?.code).toBe('MALFORMED_QUERY');
+    expect(logs.text()).not.toContain('secret detail');
   });
 });

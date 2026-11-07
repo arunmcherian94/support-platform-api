@@ -39,7 +39,9 @@ function childTraceparent(traceparent: string): string | undefined {
 /** The upstream's error code from a JSON error body, if it has a short one. Never the body. */
 function errorCode(text: string): string | undefined {
   try {
-    const parsed: unknown = JSON.parse(text);
+    const raw: unknown = JSON.parse(text);
+    // Salesforce-style errors are an array: [{ errorCode, message }].
+    const parsed: unknown = Array.isArray(raw) ? (raw as unknown[])[0] : raw;
     if (typeof parsed !== 'object' || parsed === null) return undefined;
     const record = parsed as Record<string, unknown>;
     const code = record.code ?? record.errorCode ?? record.error;
