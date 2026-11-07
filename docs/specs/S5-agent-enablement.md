@@ -1,6 +1,6 @@
 # S5: Agent enablement (MCP server, escalate, guardrails)
 
-- **Status:** Proposed. It is approved by merging this PR, and no code is written before that.
+- **Status:** Approved (merged in PR #16).
 - **Decisions:** ADR-0005 (escalate rules, `If-Match`, `escalatedBy`), DECISIONS rows 3, 8, 9 and 18. ADR-0006 (MCP and agent guardrails) is written alongside the demo.
 - **Traceability:**
   - A4 (escalate, implementation part) and A5 (`case.escalated` is now sent for real);
@@ -16,9 +16,9 @@ This spec builds the core of that and records what is deliberately left out.
 
 ### 2.1 Escalate endpoint (`POST /v1/cases/{caseId}/escalate`)
 The contract already specifies it; this section fixes how it's built.
-- **Mock case system:** `POST /cases/:id/escalate` with the expected version.
-  - On a match it sets `escalation` and bumps `version`.
-  - On a mismatch it returns 409 in the case system's own error shape, which the adapter maps to 412.
+- **Mock case system:** its existing `PATCH /cases/:id` carries the write, with `If-Match` set to the version that was checked.
+  - On a match it sets the escalation fields and bumps `version`.
+  - On a mismatch it returns 412, which the adapter passes on and the handler answers as 412.
 - **Handler, in order:**
   1. scope `cases:escalate`, already enforced from the contract;
   2. `If-Match` missing → 428 `precondition-required`;
@@ -37,7 +37,8 @@ The contract already specifies it; this section fixes how it's built.
   - Carrying a proposal reference in the request, so the case itself records `agent` and `approvedBy`, would be a contract change: see §5.
 - **Audit (`src/store/audit.ts`):** `recordAudit(db, row)` inserts one `audit_log` row:
   - time, correlation ID, `sub`, agent, client, action, resource, redacted arguments, outcome and latency;
-  - rejected attempts are audited too, with the outcome set to the problem type.
+  - refusals the handler decides (412, 409, 422, 503, 404, upstream failures) are audited too, with the outcome set to the problem type;
+  - refusals made before the handler runs (401, 403 scope, 400 validation, a missing `If-Match`) aren't in `audit_log`: they're in the request log with the correlation ID. For agents, the MCP server audits every tool call, refusals included (§2.5), so a refused agent attempt is still recorded.
 
 ### 2.2 Delegated identity (token exchange on the dev issuer)
 - **The grant:** `POST /dev/oauth/token` accepts `grant_type=urn:ietf:params:oauth:grant-type:token-exchange` with:

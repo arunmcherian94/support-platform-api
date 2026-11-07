@@ -12,6 +12,8 @@ export interface Config {
   /** Mounts the dev token issuer (dev-only; refused in production). */
   devIssuer: boolean;
   issuerUrl: string;
+  /** This API's own base URL, for links it sends out (the webhook's `caseUrl`). */
+  publicBaseUrl: string;
   audience: string;
   upstreams: { cases: string; entitlement: string; warehouse: string };
   rateLimit: { clientPerMinute: number; agentPerMinute: number };
@@ -128,6 +130,7 @@ export function loadConfig(env: Env = process.env): Config {
     responseValidation: oneOf(env, 'RESPONSE_VALIDATION', ['strict', 'log'], 'strict'),
     devIssuer,
     issuerUrl: url(env, 'ISSUER_URL', `http://127.0.0.1:${port}/dev`),
+    publicBaseUrl: url(env, 'PUBLIC_BASE_URL', `http://127.0.0.1:${port}`).replace(/\/+$/, ''),
     audience: read(env, 'AUDIENCE', 'support-platform-api'),
     upstreams: {
       cases: url(env, 'CASES_URL', mocks),

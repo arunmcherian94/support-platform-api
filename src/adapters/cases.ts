@@ -162,6 +162,38 @@ export function createCaseSystem(client: UpstreamClient): CaseSystem {
       // The upstream echoes only id and time; author and body are what it accepted.
       return parseComment({ id: raw.id, at: raw.at, author: comment.author, body: comment.body });
     },
+    async escalate(
+      caseId: string,
+      escalation: CaseEscalation,
+      expectedVersion: number,
+    ): Promise<{ version: number; etag: string }> {
+      // A single attempt: a retry after a lost response would meet a changed
+      // version and report 412 for a write that succeeded.
+      const response = await client.request({
+        method: 'PATCH',
+        path: `/cases/${encodeURIComponent(caseId)}`,
+        headers: { 'If-Match': `"${String(expectedVersion)}"` },
+        body: {
+          IsEscalated: true,
+          EscalationReason: escalation.reason,
+          EscalationNote: escalation.note ?? null,
+          EscalatedAt: escalation.escalatedAt,
+          EscalatedBy: escalation.escalatedBy.user,
+          EscalatedByAgent: escalation.escalatedBy.agent ?? null,
+          EscalationApprovedBy: escalation.escalatedBy.approvedBy ?? null,
+        },
+        retryable: false,
+      });
+      const match = /^"(\d+)"$/.exec(response.headers.get('etag') ?? '');
+      if (match?.[1] !== undefined) {
+        const version = Number(match[1]);
+        return { version, etag: etagFor(caseId, version) };
+      }
+      // The write succeeded; only its version is missing. Read it rather than
+      // failing a write that went through.
+      const fresh = await this.get(caseId);
+      return { version: fresh.version, etag: fresh.etag };
+    },
     async search(query: CaseQuery): Promise<CasePage> {
       // Only the first upstream page is used; keyset paging replaces nextRecordsUrl.
       const response = await client.request({ path: searchPath(query) });

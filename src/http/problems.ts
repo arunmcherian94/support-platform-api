@@ -107,6 +107,13 @@ function missingIdempotencyKey(error: ValidatorError): boolean {
   );
 }
 
+/** `If-Match` is required by the contract; its absence is 428, not a validation error. */
+function missingIfMatch(error: ValidatorError): boolean {
+  return (error.errors ?? []).some(
+    (item) => /if-match/i.test(item.path) && /required/i.test(item.message),
+  );
+}
+
 /** Errors from the body parser and similar middleware (http-errors shape). */
 function clientErrorStatus(error: unknown): number | undefined {
   if (typeof error !== 'object' || error === null) return undefined;
@@ -136,6 +143,14 @@ export function errorHandler(logger: Logger) {
           'idempotency-key-required',
           'Send a unique Idempotency-Key with every comment create.',
         ),
+      );
+      return;
+    }
+    if (isValidatorError(error) && error.status === 400 && missingIfMatch(error)) {
+      sendProblem(
+        req,
+        res,
+        new AppError('precondition-required', "Send If-Match with the case's current ETag."),
       );
       return;
     }

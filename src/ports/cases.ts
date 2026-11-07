@@ -74,4 +74,14 @@ export interface CaseSystem {
    * Throws `not_found` for an unknown case.
    */
   addComment(caseId: string, comment: { author: string; body: string }): Promise<CaseComment>;
+  /**
+   * Sets the escalation if the case is still at `expectedVersion`. A single
+   * attempt, never retried. Throws `client_error` with status 412 when the
+   * case changed, `not_found` for an unknown case. Returns the new ETag.
+   */
+  escalate(
+    caseId: string,
+    escalation: CaseEscalation,
+    expectedVersion: number,
+  ): Promise<{ version: number; etag: string }>;
 }
