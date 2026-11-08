@@ -763,7 +763,7 @@ paths:
                 $ref: '#/components/schemas/Readiness'
               examples:
                 ready:
-                  summary: Ready, with one unmatched account
+                  summary: Ready
                   value:
                     status: ok
                     checks:
@@ -771,7 +771,6 @@ paths:
                       entitlementSnapshot: ok
                       caseSystem: ok
                       usageWarehouse: ok
-                    unmatchedAccountIds: [ACC-099]
         '503':
           description: Not ready.
           content:
@@ -788,7 +787,6 @@ paths:
                       entitlementSnapshot: unavailable
                       caseSystem: ok
                       usageWarehouse: ok
-                    unmatchedAccountIds: []
 
 webhooks:
   case.escalated:
@@ -1804,7 +1802,7 @@ components:
     Readiness:
       type: object
       additionalProperties: false
-      required: [status, checks, unmatchedAccountIds]
+      required: [status, checks]
       properties:
         status:
           type: string
@@ -1822,11 +1820,6 @@ components:
               $ref: '#/components/schemas/CheckStatus'
             usageWarehouse:
               $ref: '#/components/schemas/CheckStatus'
-        unmatchedAccountIds:
-          type: array
-          description: Account IDs seen in an upstream that match nothing in the others (data-quality report).
-          items:
-            type: string
     CheckStatus:
       type: string
       enum: [ok, degraded, unavailable]

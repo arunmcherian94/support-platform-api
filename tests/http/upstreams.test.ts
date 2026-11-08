@@ -30,7 +30,6 @@ afterEach(async () => {
 interface Readiness {
   status: string;
   checks: Record<string, string>;
-  unmatchedAccountIds: string[];
 }
 
 /** Starts mocks plus the real server; `getCase` reads the case through the adapter. */
@@ -107,10 +106,10 @@ describe('readiness with real upstreams (S3-12)', () => {
     expect(running?.upstreams.entitlement.current().usable).toBe(true);
   });
 
-  it('lists unmatched account IDs reported during reads', async () => {
+  it('never lists account IDs (the endpoint is unauthenticated)', async () => {
     await start();
     running?.upstreams.entitlement.reportUnmatched('ACC-099');
-    expect((await readiness()).body.unmatchedAccountIds).toEqual(['ACC-099']);
+    expect(JSON.stringify((await readiness()).body)).not.toContain('ACC-');
   });
 });
 

@@ -3,7 +3,7 @@
  * (S3-11, S3-12, S3-14). The server validates every response against the
  * contract, so a body with an extra key would fail here as a 500.
  */
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fixedClock } from '../../src/clock.js';
 import type { RunningServer } from '../../src/server.js';
 import {
@@ -145,20 +145,15 @@ describe('a case (S3-11)', () => {
 });
 
 describe('a case whose account has no entitlement record (S3-12)', () => {
-  it('returns account: null and lists the account as unmatched in readiness', async () => {
+  it('returns account: null and reports the account as unmatched', async () => {
     await start();
-    const unmatched = async (): Promise<string[]> =>
-      (
-        (await (await fetch(`${running?.url ?? ''}/readyz`)).json()) as {
-          unmatchedAccountIds: string[];
-        }
-      ).unmatchedAccountIds;
-    expect(await unmatched()).not.toContain('ACC-099');
+    if (running === undefined) throw new Error('server not started');
+    const report = vi.spyOn(running.upstreams.entitlement, 'reportUnmatched');
     const res = await getCase('CS-10241');
     expect(res.status).toBe(200);
     const body = (await res.json()) as CaseBody;
     expect(body.accountId).toBe('ACC-099');
     expect(body.account).toBeNull();
-    expect(await unmatched()).toContain('ACC-099');
+    expect(report).toHaveBeenCalledWith('ACC-099');
   });
 });

@@ -43,7 +43,6 @@ export function healthHandlers(
           caseSystem: upstreams?.clients.cases.health() ?? 'unavailable',
           usageWarehouse: upstreams?.clients.warehouse.health() ?? 'unavailable',
         },
-        unmatchedAccountIds: upstreams?.entitlement.unmatchedAccountIds() ?? [],
       });
     },
   };

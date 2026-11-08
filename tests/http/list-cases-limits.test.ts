@@ -42,7 +42,6 @@ async function startWith(count: number) {
     entitlement: {
       current: () => ({ usable: true, snapshot }),
       reportUnmatched: vi.fn(),
-      unmatchedAccountIds: () => [],
     },
   } as unknown as Upstreams;
   const handler = listCasesHandler({

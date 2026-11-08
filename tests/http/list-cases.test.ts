@@ -6,7 +6,7 @@
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import express from 'express';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fixedClock } from '../../src/clock.js';
 import type { RunningServer } from '../../src/server.js';
 import { createMockApp, type MockApp } from '../../mocks/server.js';
@@ -245,13 +245,12 @@ describe('cross-system edge cases', () => {
 
   it('shows a case with no entitlement record with account null and reports it as unmatched', async () => {
     await start();
+    if (running === undefined) throw new Error('server not started');
+    const report = vi.spyOn(running.upstreams.entitlement, 'reportUnmatched');
     const body = await list('accountId=ACC-099');
     expect(body.data).toEqual([expect.objectContaining({ id: 'CS-10241', account: null })]);
     expect(body.degraded).toBe(false);
-    const ready = (await (await fetch(`${running?.url ?? ''}/readyz`)).json()) as {
-      unmatchedAccountIds: string[];
-    };
-    expect(ready.unmatchedAccountIds).toContain('ACC-099');
+    expect(report).toHaveBeenCalledWith('ACC-099');
   });
 
   it('never returns upstream field names or concurrency tokens (S3-11)', async () => {
@@ -268,6 +267,8 @@ describe('cross-system edge cases', () => {
 describe('entitlement unavailable (S3-5, list part)', () => {
   it('degrades without entitlement filters and refuses to filter on them', async () => {
     await start({ entitlementDown: true });
+    if (running === undefined) throw new Error('server not started');
+    const report = vi.spyOn(running.upstreams.entitlement, 'reportUnmatched');
     const body = await list('priority=P1');
     expect(body.data.length).toBeGreaterThan(0);
     expect(body.data.every((c) => c.account === null)).toBe(true);
@@ -277,10 +278,7 @@ describe('entitlement unavailable (S3-5, list part)', () => {
       { system: 'entitlement_feed', status: 'unavailable', asOf: null },
     ]);
     // Unusable data is not evidence of an unmatched account.
-    const ready = (await (await fetch(`${running?.url ?? ''}/readyz`)).json()) as {
-      unmatchedAccountIds: string[];
-    };
-    expect(ready.unmatchedAccountIds).toEqual([]);
+    expect(report).not.toHaveBeenCalled();
 
     for (const query of ['accountTier=platinum', 'renewalWithinDays=90']) {
       const res = await get(query);
