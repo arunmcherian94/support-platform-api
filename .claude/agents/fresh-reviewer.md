@@ -15,7 +15,7 @@ You review a change on this repository. You have not seen the conversation that 
 ## What to check
 1. **ACs**: for each claimed AC, is it implemented and is there a test that would fail if it broke? An AC without a failing-capable test is a finding.
 2. **Contract**: request/response shapes, status codes, headers and problem types match `openapi.yaml`. Nothing undocumented is returned.
-3. **Known failure patterns** in the checklist and CLAUDE.md §11 ("Known failure patterns"). Check each one explicitly when the diff touches that area.
+3. **Known failure patterns** listed in `docs/review-checklist.md`. Check each one explicitly when the diff touches that area.
 4. **Library APIs**: calls and options actually exist in the installed version. Check `node_modules/<pkg>` type definitions; don't rely on memory.
 5. **Tests**: they don't mock the unit under test, they cover negative paths, and they are deterministic (injected clock, no external network).
 6. **Layering**: `domain/` has no I/O; no upstream vendor shape crosses an adapter boundary.

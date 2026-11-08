@@ -1,6 +1,6 @@
 # Review checklist
 
-How every PR is checked, weighted by risk (CLAUDE.md §11). Critical-tier PRs get every item; low-tier PRs get the automated checks and the human's review.
+How every PR is checked, weighted by risk (workflow in CLAUDE.md). Critical-tier PRs get every item; low-tier PRs get the automated checks and the human's review.
 
 ## Every PR
 - [ ] Checked against the spec's acceptance criteria and `openapi.yaml`, both approved before the code.

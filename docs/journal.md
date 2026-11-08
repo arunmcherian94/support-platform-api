@@ -251,3 +251,14 @@ The two slices (auth, rate limits) ran in parallel on opus in worktrees. Integra
 - **Provider switched to OpenAI** at the human's request (a key was already available): `openai` 7.53.0 (exact pin) replaces `@anthropic-ai/sdk`; Responses API with `gpt-6-luna`, checked against the model list and the installed types on 2026-11-07.
 
 **Open questions.** The live run needs the human's go-ahead and credentials.
+
+## 2026-11-08 — Cleanup before Part D
+
+**What was done.**
+- `/readyz` no longer lists account IDs; unmatched IDs are logged instead (contract PR).
+- Mocks: one page per case query (no query locators), no error-rate fault; mock tests trimmed to the sample-data quirks, fault switching and the SQL allow-list.
+- Entitlement feeds polled with plain fetches; `asOf` only from the source's own time.
+- `docker compose up` verified: both services healthy, and the sample question returns the five ground-truth cases.
+- Docs: contract testing described as what runs (strict response validation); the stretch recorded as the local queue for `case.escalated`; a Postman environment file added and wired into `make postman`; `CLAUDE.md` cut to commands, layout, rules and workflow; the requirements table moved into DECISIONS and the Part D requirements into draft spec S6.
+
+**Open questions.** None.

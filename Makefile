@@ -31,7 +31,7 @@ api: ## API only (expects mocks on :8081)
 	NOW=$(NOW) DEV_ISSUER=true npx tsx src/server.ts
 
 postman: ## Postman functional and regression checks (expects make run)
-	npx -y newman@6.2.3 run postman/support-platform-api.postman_collection.json
+	npx -y newman@6.2.3 run postman/support-platform-api.postman_collection.json -e postman/local.postman_environment.json
 
 mcp: ## MCP server over stdio for USER_TOKEN's user (expects make run)
 	NOW=$(NOW) npx tsx mcp/server/main.ts

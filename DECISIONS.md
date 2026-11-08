@@ -9,7 +9,7 @@ Key trade-offs, assumptions and what was skipped, recorded at the time each deci
 | 1 | Node 26 LTS, TypeScript 6, Express 5 + `express-openapi-validator` | The running service must validate **responses** against the OAS 3.1 contract; Fastify only serialises against response schemas | [ADR-0001](docs/adr/ADR-0001-runtime-and-core-stack.md) |
 | 2 | SQLite via built-in `node:sqlite` behind a repository layer | Zero ops and no native build; the schema ports to Postgres | ADR-0001 |
 | 3 | MCP TypeScript SDK v2, spec 2026-07-28, stdio | Current stable line; the stateless spec's "server-minted handles as tool arguments" fits our pending-action approval design | ADR-0001 |
-| 4 | Two passes: pass 1 builds what's required; outbox stretch only if time remains | Working core over breadth. Escalate is built minimally because the `escalate_case` tool needs a real endpoint | — |
+| 4 | Build what the brief requires; stretch: the event path for `case.escalated` as a local queue (`webhook_deliveries` plus a background dispatcher) | Working core over breadth. The brief allows a simple local queue for the stretch; escalate is built minimally because the `escalate_case` tool needs a real endpoint | S4 |
 | 5 | Ports and adapters; one mock process serving all three upstreams over HTTP, with fault injection | Vendor shapes stay at the boundary; a provider switch means a new adapter; resilience claims can be demonstrated | [ADR-0002](docs/adr/ADR-0002-upstream-integration-and-mocks.md) |
 | 6 | Cases never cached; writes go through synchronously | Agents act on case state; stale state on a write path is worse than latency | ADR-0002 |
 | 7 | Entitlement is a refreshed snapshot; polled every 15 minutes; maximum staleness 48h (from the CSV export) before 503 | Exports are periodic files (assumed nightly CSV, hourly XML); polling faster buys no freshness; the last good snapshot gives stale-on-error fallback | [ADR-0003](docs/adr/ADR-0003-entitlement-snapshot-precedence-and-ids.md) |
@@ -32,7 +32,7 @@ Key trade-offs, assumptions and what was skipped, recorded at the time each deci
 | 24 | Gate 3a: retries via cockatiel with backoff and jitter; reads and idempotent writes only; 429 honours `Retry-After` | Retrying a non-idempotent write can duplicate it | read-path spec |
 | 25 | Gate 3a: a circuit breaker per upstream; the entitlement snapshot doubles as a stale-on-error fallback | Fail fast when an upstream is down; the snapshot design gives fallback for free (ADR-0003) | read-path spec |
 | 26 | Gate 3a: validation driven by `openapi.yaml`; responses strict in dev/test/CI, log-only option in production | The contract is the runtime source of truth; contract drift shouldn't become an outage | S2 |
-| 27 | Gate 3a: contract tests = response validation in every test, plus a local Schemathesis run | Schemathesis generates inputs nobody hand-picked; it needs the running stack, so it stays out of CI | — |
+| 27 | Gate 3a: contract tests = strict response validation against `openapi.yaml` in every test | Any response that drifts from the contract fails the suite; property-based testing (Schemathesis) was planned but not built, see "Skipped" | — |
 | 28 | Gate 3a: Postman collection generated from the spec, then functional and regression checks added; Newman run | Starts complete, then gains the checks that matter | — |
 | 29 | Gate 3a: pino JSON logs, correlation ID plus `traceparent` | Required correlation, ready for tracing later | S2 |
 | 31 | Response schemas are closed (`additionalProperties`/`unevaluatedProperties: false`), enforced at runtime and by a Spectral rule | An undeclared field such as ARR can't leak past the contract; clients still ignore unknown fields, so additions stay non-breaking | [ADR-0005](docs/adr/ADR-0005-api-contract-conventions.md) |
@@ -46,6 +46,52 @@ Key trade-offs, assumptions and what was skipped, recorded at the time each deci
 | 38 | Five task-shaped tools (`get_case` added) with closed schemas, compact rows and structured errors | Tools follow the question, not the resources; `get_case` is the only way comments reach the agent | ADR-0006 |
 | 39 | Untrusted text normalised, masked, defanged, capped and flagged; detection best-effort, enforcement structural | No detector catches everything; single-case tools, approval and scopes cap the damage of whatever gets through | ADR-0006 |
 | 40 | Demo: OpenAI Responses API (`gpt-6-luna`, overridable) in a manual tool loop over the MCP client; dry run by default, one live run with a committed transcript | Reviewers need no key; the cheapest current model keeps the paid run small; the loop is short enough to read, and the approval prompt sits between turns | [S5](docs/specs/S5-agent-enablement.md) |
+
+## Requirements traceability
+Built = implemented and tested; Documented = deferred with a plan under "Skipped"; Part D = still to write.
+
+| ID | Requirement | Where | Status |
+|---|---|---|---|
+| G1 | List what was skipped and how it would be done | This file, "Skipped" | Built |
+| G2 | AI usage: what for, what it got wrong, how verified | `AI_USAGE.md`, `docs/notes/ai-usage-log.md` | Part D |
+| G3 | Mocks only; no real credentials; nothing paid deployed | `mocks/`, `.env.example` | Built |
+| S1 | Three stubbed upstreams: JSON, CSV and one XML feed | `mocks/` | Built |
+| S2 | Two consumer types: apps/iPaaS and AI agents | REST API + `mcp/` | Built |
+| A1 | Aggregated customer view (entitlement + usage) | `openapi.yaml`, `GET /v1/customers/{id}` | Built |
+| A2 | Case search with filtering, sorting, cursor pagination | `GET /v1/cases` | Built |
+| A3 | Idempotent comment create | `POST /v1/cases/{id}/comments` | Built |
+| A4 | Escalation with business rules | `POST /v1/cases/{id}/escalate` | Built |
+| A5 | `case.escalated` webhook with signature verification | `openapi.yaml` `webhooks`, `src/events/` | Built |
+| A6 | Resource modelling; aggregate vs expose | `openapi.yaml`, ADR-0005 | Built |
+| A7 | Consistent error model | RFC 9457 problem types, ADR-0005 | Built |
+| A8 | Versioning and deprecation | `/v1`, ADR-0005 | Built |
+| A9 | OAuth scopes; ARR only with `finance:read` | `openapi.yaml` security, row 14 | Built |
+| A10 | Idempotency keys, ETags, rate-limit headers | ADR-0005, rows 15–17 | Built |
+| A11 | Why REST; where GraphQL or gRPC fit | `openapi.yaml` description | Built |
+| B1 | Items 1–3 plus the webhook sender | `src/` | Built |
+| B2 | Single-command run | `make run`, `docker compose up` | Built |
+| B3 | Persistent store with a justified schema | `src/store/`, "Data model" | Built |
+| B4 | Timeouts, retries with backoff, circuit breaker | `src/adapters/`, rows 23–25, 32 | Built |
+| B5 | Degraded flag on partial failure | `GET /v1/customers/{id}` | Built |
+| B6 | Input validation and consistent errors | spec-driven validation | Built |
+| B7 | Unit and contract tests | `tests/` (strict response validation in every test) | Built |
+| B8 | Postman collection and environment | `postman/` | Built |
+| B9 | Structured logs with correlation IDs | `src/observability/` | Built |
+| B10 | Stretch: event path for `case.escalated` | local queue: `webhook_deliveries` + dispatcher (row 4) | Built |
+| C1 | MCP server wrapping the API | `mcp/server/` (stdio) | Built |
+| C2 | The four named tools (plus `get_case`) | `mcp/server/tools.ts` | Built |
+| C3 | Deliberate tool schemas and descriptions | `mcp/server/tools.ts`, "Agent enablement" | Built |
+| C4 | Tools vs REST resources | "Agent enablement" | Built |
+| C5 | Identity propagation, not a super-user | token exchange, row 36 | Built |
+| C6 | Human in the loop for high-risk writes | pending actions + `make approve`, row 35 | Built |
+| C7 | Prompt injection via data | guardrails, ADR-0006 | Built |
+| C8 | PII and ARR redaction; output limits | guardrails, ADR-0006 | Built |
+| C9 | Per-agent rate limits; audit every tool call | `src/http/rate-limit.ts`, `audit_log` | Built |
+| C10 | Demo: an LLM answers the sample question | `mcp/demo/`, transcripts | Built |
+| C11 | One real failure and its fix | `mcp/demo/README.md` | Built |
+| D1–D8 | Platform write-up | `PLATFORM.md` (spec S6) | Part D |
+| X1 | All deliverables at their paths | repo root | Part D (README, PLATFORM, AI_USAGE) |
+| X2 | README gets a reviewer running in under 5 minutes | `README.md` | Part D |
 
 ## Data quirks and how they're handled
 - **Mixed casing in case JSON** (`Status`, `Comments` vs `openedAt`): normalised to canonical camelCase in the case adapter; upstream shapes never leave the adapter.
@@ -127,7 +173,7 @@ human (jdoe) --own token, If-Match--> API   (approval: make approve or the demo 
 - URL defanging misses scheme-less hosts (`evil.example/x`) and doesn't strip userinfo.
 - The approval's audit row links to the proposal by pending-action ID, not by the proposing call's correlation ID.
 - A `make mcp` session lasts as long as `USER_TOKEN` (15 minutes with the dev issuer); then tools return `unauthorized`.
-- The escalation is written upstream first, then its audit row and `case.escalated` delivery are stored in one local transaction. If that transaction fails after the upstream write, the error is logged and the 200 still returned, so that event and audit row are lost. The transactional outbox (pass 2) with an upstream reconciliation closes the gap.
+- The escalation is written upstream first, then its audit row and `case.escalated` delivery are stored in one local transaction. If that transaction fails after the upstream write, the error is logged and the 200 still returned, so that event and audit row are lost. A transactional outbox with an upstream reconciliation would close the gap (see "Skipped").
 - Pre-handler failures (malformed JSON-RPC, unknown tool names) are refused by the SDK and not audited; every call that reaches a tool handler is.
 - The demo calls OpenAI's Responses API directly rather than through a provider interface; a second provider means putting the loop's two provider-specific pieces (the create call and the tool-output shape) behind one. OpenAI was chosen over the originally planned Anthropic API because a key was already available; nothing in the MCP server depends on the provider.
 
@@ -157,3 +203,5 @@ _Filled in as items are deferred; the final list mirrors the traceability matrix
 - **Agent evals.** One scripted demo question and targeted injection tests now; a golden set run on every prompt, tool-description or model change later.
 - **Conditional polling of the entitlement feeds.** Each poll is a plain fetch of a small file. For large exports, send `If-None-Match` / `If-Modified-Since` with the last validators so an unchanged feed costs a `304`, not a download; or move to the ERP's change feed or webhooks instead of polling.
 - **Paging through the case system.** The case adapter asks for one page per request with keyset parameters. A real Salesforce adapter would follow `nextRecordsUrl` (query locators) when one page doesn't cover the request.
+- **Property-based contract testing.** Strict response validation runs in every test, so any response that breaks the contract fails the suite. Schemathesis against the running stack would add inputs nobody hand-picked (malformed and edge-case requests, flagging any 5xx or undeclared status). It needs mocks and API running, so it would be a local `make` target or a CI job that boots the stack.
+- **A full transactional outbox and a broker.** The stretch is met by a local queue: escalate stores the `case.escalated` delivery in the same transaction as its audit row, and a background dispatcher sends it with retries and dead-lettering. Production would add a separate outbox table with a relay, so other consumers can subscribe, and a broker (Kafka or EventBridge) in place of the table. It would also close the gap where the upstream write succeeds but the local transaction fails.
