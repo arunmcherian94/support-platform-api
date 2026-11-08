@@ -1,8 +1,10 @@
 .DEFAULT_GOAL := help
-.PHONY: help install typecheck lint test check mocks run api postman mcp approve demo demo-live
+.PHONY: help install typecheck lint test check mocks run api token postman mcp approve demo demo-live
 
 # Fixture clock (S1 §4). Override with NOW=... on the command line.
 NOW ?= 2026-11-06T12:00:00Z
+# Dev client for `make token` (config/dev-clients.json)
+CLIENT ?= support-console
 
 help: ## List targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "}; {printf "  %-12s %s\n", $$1, $$2}'
@@ -29,6 +31,9 @@ run: ## Mocks + API on :8081/:8080 at the fixture clock
 
 api: ## API only (expects mocks on :8081)
 	NOW=$(NOW) DEV_ISSUER=true npx tsx src/server.ts
+
+token: ## Print a dev access token (expects make run): make -s token [CLIENT=finance-app]
+	@node -e "const c = require('./config/dev-clients.json').clients.find((x) => x.clientId === '$(CLIENT)'); if (!c) { console.error('unknown CLIENT'); process.exit(1); } fetch('http://127.0.0.1:8080/dev/oauth/token', { method: 'POST', headers: { authorization: 'Basic ' + Buffer.from(c.clientId + ':' + c.secret).toString('base64'), 'content-type': 'application/x-www-form-urlencoded' }, body: 'grant_type=client_credentials' }).then((r) => r.json()).then((j) => console.log(j.access_token))"
 
 postman: ## Postman functional and regression checks (expects make run)
 	npx -y newman@6.2.3 run postman/support-platform-api.postman_collection.json -e postman/local.postman_environment.json

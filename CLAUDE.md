@@ -8,6 +8,7 @@ make install      # npm ci
 make run          # mocks (:8081) + API (:8080) at the fixture clock; or: docker compose up
 make check        # typecheck + lint (ESLint, Prettier, Spectral) + tests: what CI runs
 make test         # Vitest only
+make token        # print a dev access token [CLIENT=finance-app]
 make postman      # Newman against a running `make run`
 make mcp          # MCP server over stdio (needs USER_TOKEN)
 make approve ID=… # human approval of a pending escalation [REJECT=1]
