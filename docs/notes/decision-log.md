@@ -89,8 +89,8 @@ Built = implemented and tested; Documented = deferred with a plan under "Skipped
 | C9 | Per-agent rate limits; audit every tool call | `src/http/rate-limit.ts`, `audit_log` | Built |
 | C10 | Demo: an LLM answers the sample question | `mcp/demo/`, transcripts | Built |
 | C11 | One real failure and its fix | `mcp/demo/README.md` | Built |
-| D1–D8 | Platform write-up | `PLATFORM.md` (spec S6) | Part D |
-| X1 | All deliverables at their paths | repo root | Part D (README, PLATFORM) |
+| D1–D8 | Platform write-up | `PLATFORM.md` (spec S6) | Written |
+| X1 | All deliverables at their paths | repo root | Part D (README) |
 | X2 | README gets a reviewer running in under 5 minutes | `README.md` | Part D |
 
 ## Data quirks and how they're handled
