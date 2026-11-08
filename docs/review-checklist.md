@@ -89,3 +89,24 @@ Each row: the rule broken on purpose, and the test that failed. Reverted after e
 | Skip the timestamp tolerance or the duplicate check | `tests/events/verify.test.ts` | 6 |
 | Retry after a 410, or never mark a delivery dead | `tests/events/dispatcher.test.ts` | 6 |
 | Don't start the dispatcher with the server | `tests/http/webhooks-e2e.test.ts` | 6 |
+| Skip the `If-Match` comparison on escalate | `tests/http/escalate.test.ts` (412) | 17 |
+| Allow P3 escalation on a gold account | `tests/http/escalate.test.ts` (422 cell of the matrix) | 17 |
+| Drop the case-state check (closed or already escalated) | `tests/http/escalate.test.ts` (409) | 17 |
+| Send no version upstream with the escalation | `tests/http/escalate.test.ts` (write-time 412 race) | 17 review |
+| Remove the audit-and-event transaction | `tests/http/escalate.test.ts` (audit row and delivery together) | 17 review |
+| Map the upstream write-time 412 to something else | `tests/http/escalate.test.ts` (412 with current `ETag`) | 17 review |
+| Grant the agent its own scopes instead of user ∩ agent | `tests/auth/token-exchange.test.ts` (finance user loses `finance:read`) | 18 |
+| Accept an already-delegated subject token | `tests/auth/token-exchange.test.ts` (delegated subject refused) | 18 |
+| Let `escalate_case` call the API directly | `tests/mcp/tools.test.ts` (case unchanged; injection obeyed only creates proposals) | 18 |
+| Turn off the injection flags | `tests/mcp/tools.test.ts` (S5-6), `tests/mcp/guardrails.test.ts` | 18 |
+| Return raw subject or comment text (no wrapper, normalisation or masking) | `tests/mcp/guardrails.test.ts`, `tests/mcp/tools.test.ts` (S5-6) | 18 |
+| Skip the expiry check when approving | `tests/mcp/approval.test.ts` (expired action never runs) | 18 |
+| Skip the pending-status check when approving | `tests/mcp/approval.test.ts` (cannot be approved twice; rejected never runs) | 18 |
+| Skip the per-session call cap | `tests/mcp/tools.test.ts` (`session_limit`) | 18 |
+| Skip the sensitive-content check on comments | `tests/mcp/tools.test.ts` (S5-8 refusal) | 18 |
+| Approve without the stored `If-Match` | `tests/mcp/approval.test.ts` (changed case gets 412, action failed) | 18 |
+| Skip the scope pre-check in `escalate_case` | `tests/mcp/tools.test.ts` (S5-9 `insufficient_scope`) | 18 |
+| Stamp pending-action expiry with the fixture clock | `tests/mcp/tools.test.ts` (wall clock, not the anchored clock) | 18 review |
+| Leave an approval stuck when the API is unreachable | `tests/mcp/approval.test.ts` (marked failed and audited) | 18 review |
+| Match a repeated proposal by case only | `tests/mcp/approval.test.ts` (another user's proposal never returned) | 18 review |
+| Drop the not-closed default in `search_cases` | `tests/mcp/tools.test.ts` (closed CS-10235 appears) | 19 |

@@ -240,3 +240,14 @@ The two slices (auth, rate limits) ran in parallel on opus in worktrees. Integra
 - **Process from here:** opus only where necessary, sonnet for scoped work, haiku for low-risk changes, one slice at a time (human decision, to save usage).
 
 **Open questions.** None.
+
+## 2026-11-07 — Part C: demo and docs
+
+**What was done.** `mcp/demo/agent.ts` (dry run by default, `make demo-live` for the paid run), demo README with one real build failure, ADR-0006 with the injection threat model, DECISIONS rows 35–40 plus the tools-versus-REST table, identity flow, guardrail outcomes, known limits and skipped items; Part C sabotage checks added to the review checklist.
+
+**What changed and why.**
+- **Manual tool loop:** the tools come from the MCP client and the human approval prompt sits between turns; the loop is about 60 lines.
+- **No provider interface yet:** one provider, recorded as a known limit in DECISIONS.
+- **Provider switched to OpenAI** at the human's request (a key was already available): `openai` 7.53.0 (exact pin) replaces `@anthropic-ai/sdk`; Responses API with `gpt-6-luna`, checked against the model list and the installed types on 2026-11-07.
+
+**Open questions.** The live run needs the human's go-ahead and credentials.

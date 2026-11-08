@@ -40,6 +40,12 @@ Key trade-offs, assumptions and what was skipped, recorded at the time each deci
 | 32 | Resilience numbers: 10 s request budget (configurable); cases 3 s × 3 attempts, warehouse 1.5 s × 2; breaker opens after 5 consecutive failures, half-open after 10 s; **429 counts as a breaker failure**, other 4xx never do | Few retries, so a struggling upstream isn't hammered; the optional warehouse fails fast to a degraded answer. The upstream's quota belongs to the platform, so a 429 means everyone slows down; per-caller limits must stay below each caller's share so one consumer can't open the breaker for all | [S3](docs/specs/S3-read-path.md) |
 | 33 | Case search pushes every filter to the case system; tier and renewal filters become an account list (400 above 500 accounts) | The case system sorts and pages, so one page needs one upstream call, with no in-memory scan or record cap | S3 |
 | 34 | Comment idempotency: atomic key claim; only successes stored; the upstream write is a single attempt, never retried | Failures release the key so the client can retry it. A create that lands upstream but times out can still be duplicated by a retry: closing that needs the case system (external-ID upsert), so it's documented, not built | [S4](docs/specs/S4-comments-and-webhooks.md) |
+| 35 | Escalation is two-phase: `escalate_case` stores a pending action; a human approves with their own token, bound to the case `ETag` | The agent decides what to do but never carries the authority to do it; a client prompt can't be seen or enforced by the server | [ADR-0006](docs/adr/ADR-0006-mcp-and-agent-guardrails.md) |
+| 36 | Agent identity by token exchange: `sub` = user, `act.sub` = agent, scopes = user ∩ agent policy, no chained delegation | The agent can never do more than its user; ARR never reaches it | ADR-0006 |
+| 37 | MCP over stdio now; Streamable HTTP with MCP authorization is the production path | One local user, no network surface, reproducible runs; tools, approval and audit don't depend on the transport | ADR-0006 |
+| 38 | Five task-shaped tools (`get_case` added) with closed schemas, compact rows and structured errors | Tools follow the question, not the resources; `get_case` is the only way comments reach the agent | ADR-0006 |
+| 39 | Untrusted text normalised, masked, defanged, capped and flagged; detection best-effort, enforcement structural | No detector catches everything; single-case tools, approval and scopes cap the damage of whatever gets through | ADR-0006 |
+| 40 | Demo: OpenAI Responses API (`gpt-6-luna`, overridable) in a manual tool loop over the MCP client; dry run by default, one live run with a committed transcript | Reviewers need no key; the cheapest current model keeps the paid run small; the loop is short enough to read, and the approval prompt sits between turns | [S5](docs/specs/S5-agent-enablement.md) |
 
 ## Data quirks and how they're handled
 - **Mixed casing in case JSON** (`Status`, `Comments` vs `openedAt`): normalised to canonical camelCase in the case adapter; upstream shapes never leave the adapter.
@@ -68,10 +74,62 @@ SQLite via `node:sqlite`: zero ops, a single file, built into Node, and WAL mode
 | --- | --- | --- | --- | --- |
 | `idempotency_keys` | Replay or reject repeated writes | `(client_id, sub, endpoint, key)`: keys are scoped to caller and endpoint, so one client can never collide with or read another's | `expires_at`: the sweep `DELETE ... WHERE expires_at < now` | 24 hours, then swept |
 | `audit_log` | Who did what to which resource | `id` (autoincrementing): a total order for an append-only log | `(resource_type, resource_id, at)`: history of one case or account. `(actor_sub, at)`: what a user did. `(actor_agent, at)`: what an agent did | Kept. Triggers reject UPDATE and DELETE. In production, shipped to an immutable store with its own retention |
+| `pending_actions` | Escalations proposed by the agent, waiting for a human | `id` (`pa_…`, random): the handle the human approves | `(status, expires_at)`: open proposals and expiry. `(case_id, status)`: reuse an open proposal instead of creating a duplicate | Kept with the audit log; decided rows are history |
 | `webhook_subscriptions` | Registered receivers | `id`: the handle in the API | None: the table is small and read whole when fanning out. `secret_ref` points at a secret, never holds one | Until deleted |
 | `webhook_deliveries` | Outbox: one row per event per subscription, with the exact signed bytes | `id`: it is the `webhook-id` receivers use to dedupe | `(status, next_attempt_at)`: the worker's "pending and due" poll | 30 days after delivered or dead |
 
 Postgres path: the same tables with native types (`timestamptz`, `jsonb`, `bigint`); append-only enforced by `REVOKE UPDATE, DELETE` instead of triggers; the delivery index becomes a partial index on `status = 'pending'`; sweeping runs as a scheduled job; the outbox poll uses `FOR UPDATE SKIP LOCKED` so several workers can share it.
+
+## Agent enablement (Part C)
+Full reasoning and the threat model are in [ADR-0006](docs/adr/ADR-0006-mcp-and-agent-guardrails.md); the spec is [S5](docs/specs/S5-agent-enablement.md).
+
+### Tools versus REST resources
+REST serves many consumers with stable, general resources. A tool serves one model answering one kind of question, so it is shaped by the task and by what the model is bad at (time arithmetic, protocol headers, retry safety).
+
+| REST | Tool | What changes, and why |
+|---|---|---|
+| `GET /v1/cases?openedBefore=…&accountTier=…&renewalWithinDays=…` | `search_cases` | `minOpenHours` instead of a timestamp: the model needs no clock. Rows carry only what the question needs (ID, subject, priority, status, hours open, account name, tier, renewal date). At most 20 rows; the tool's own cursor. Leaving `status` out means every state except closed (REST applies no status filter), because "open" in a question means not closed |
+| `GET /v1/customers/{id}` | `get_customer_summary` | Tier, entitlements, latest usage and trend, and which sources are degraded; no provenance envelope. `arr` only when the API returns it |
+| `GET /v1/cases/{id}` | `get_case` | The latest 5 comments, each as untrusted text with flags; the `ETag` is never shown to the model |
+| `POST /v1/cases/{id}/comments` + `Idempotency-Key` | `add_case_comment` | The server derives the key from (user, case, body), so a model's retry can't post twice; the comment is echoed back; sensitive content refused |
+| `POST /v1/cases/{id}/escalate` + `If-Match` | `escalate_case` | Proposes instead of acting: stores the arguments and the current `ETag`, returns a preview and a pending ID. The human's approval sends `If-Match` |
+
+Descriptions are written for the model: when to use the tool and when not, units and limits for each parameter, and what to do on each error code (`rate_limited`: wait `retryAfterSeconds`; `awaiting_human_approval`: tell the user and don't retry).
+
+### Identity propagation
+
+```
+user (jdoe) --login--> dev issuer --user token--> MCP server (USER_TOKEN)
+MCP server --token exchange, as support-copilot--> dev issuer
+           <-- delegated token: sub=jdoe, act.sub=support-copilot, scopes = jdoe ∩ copilot
+MCP server --Bearer delegated token, X-Request-Id--> API --> upstreams
+API and MCP server --> audit_log (sub, agent, client, outcome, correlation ID)
+human (jdoe) --own token, If-Match--> API   (approval: make approve or the demo prompt)
+```
+
+| User | User scopes | ∩ copilot policy (`customers:read cases:read cases:comment cases:escalate`) | Effect |
+|---|---|---|---|
+| jdoe (support) | customers, cases, comment, escalate | all four | Full agent toolset |
+| fbaker (finance) | customers, cases, `finance:read` | customers, cases | No comments or escalations; `finance:read` dropped, so no ARR |
+
+### Guardrails, as decided at Gate 4a
+- **Human in the loop:** server-side pending action, 15-minute expiry, approved with the human's own token and the stored `ETag`; rejected, expired and stale proposals never run. `add_case_comment` is the low-risk write: no approval, but echoed back and checked for sensitive content.
+- **Prompt injection:** structural first (single-case tools, approval, scopes, rate limits); then content handling (untrusted wrapper, normalisation, flags).
+- **Redaction:** ARR by scope at the API; emails and phone numbers masked in tool output; comment bodies and escalation notes with emails, phones or money refused.
+- **Output limits:** 20 rows, 300 characters per text field, about 8 KB per response.
+- **Rate limits:** the API's per-agent bucket (keyed by `act.sub`) plus 30 calls per MCP session.
+- **Audit:** a row per tool call and per approval decision. Example: `SELECT at, action, actor_sub, actor_agent, outcome, correlation_id FROM audit_log WHERE action LIKE 'mcp.%' OR action LIKE 'approval.%' ORDER BY id;`
+
+### Known limits of what's built
+- Any dev client may use the exchange grant; the intersection still caps the result. A real token service restricts the grant to registered agent clients.
+- `support-copilot` can still get a non-delegated token by client credentials (used before token exchange existed). In production that client would have no client-credentials grant.
+- Account names and comment authors are cleaned and masked but not wrapped or flagged as untrusted.
+- URL defanging misses scheme-less hosts (`evil.example/x`) and doesn't strip userinfo.
+- The approval's audit row links to the proposal by pending-action ID, not by the proposing call's correlation ID.
+- A `make mcp` session lasts as long as `USER_TOKEN` (15 minutes with the dev issuer); then tools return `unauthorized`.
+- The escalation is written upstream first, then its audit row and `case.escalated` delivery are stored in one local transaction. If that transaction fails after the upstream write, the error is logged and the 200 still returned, so that event and audit row are lost. The transactional outbox (pass 2) with an upstream reconciliation closes the gap.
+- Pre-handler failures (malformed JSON-RPC, unknown tool names) are refused by the SDK and not audited; every call that reaches a tool handler is.
+- The demo calls OpenAI's Responses API directly rather than through a provider interface; a second provider means putting the loop's two provider-specific pieces (the create call and the tool-output shape) behind one. OpenAI was chosen over the originally planned Anthropic API because a key was already available; nothing in the MCP server depends on the provider.
 
 ## Skipped, and how I'd do it with more time
 _Filled in as items are deferred; the final list mirrors the traceability matrix._
@@ -81,9 +139,19 @@ _Filled in as items are deferred; the final list mirrors the traceability matrix
   - add `GET /v1/customers?q=` returning ranked candidates (exact alias, name prefix, fuzzy name), each with its match type, for the user or agent to confirm.
 
   Fuzzy matching is only ever for **search**, never for **joins** between systems: a wrong join silently attaches one customer's tier and ARR to another (ADR-0003).
-- **Rate limits per user, not just per client and agent.** Buckets are keyed by client and by agent, so every user of a client shares one bucket, and an agent's bucket spans all its users. To revisit in Part C with the agent's delegated identity (e.g. agent + user keys).
+- **Rate limits per user, not just per client and agent.** Buckets are keyed by client and by agent, so every user of a client shares one bucket, and an agent's bucket spans all its users. Delegated tokens now carry both `sub` and `act.sub`, so an agent-plus-user key is a small change in `src/http/rate-limit.ts`; not built.
 - **Distributed rate limiting.** Buckets are in memory, per instance: N replicas allow N times the quota. In production the gateway or a shared store (Redis) enforces the limit; this service keeps per-agent limits as defence in depth.
 - **JWKS stale-on-error.** Keys are cached for an hour; an identity provider outage longer than that gives 503. With more time, keep the last good key set for a bounded period beyond that.
 - **Access-token hardening for a real IdP:** require `typ: at+jwt` (RFC 9068) and a maximum token age.
 - **Comment paging.** `GET /v1/cases/{caseId}` returns the newest 50 comments plus `commentCount`. A `GET /v1/cases/{caseId}/comments?cursor=` sub-collection is an additive change when a consumer needs older comments.
 - **Postman collection in CI.** `postman/` runs by hand against `make run` (`make postman`); CI runs typecheck, lint and the Vitest suite, which already covers these behaviours. Running it in CI means starting mocks and API in the job, then Newman, with a JUnit report.
+- **Streamable HTTP with MCP authorization.** The server would become an OAuth resource server: protected-resource metadata, each request's bearer token exchanged per call, stateless behind the gateway (TLS, WAF, rate limits), scaled horizontally. Migration swaps the transport and takes identity from each request instead of `USER_TOKEN`; tools, guardrails, approval and audit stay.
+- **An approvals service.** Approvals in a UI or chat with the exact action shown, transaction-bound authorization requests (RFC 9396 authorization details), step-up or backchannel confirmation for high-risk actions, optional second approver, its own store instead of the API's SQLite file. Also records `approvedBy` on the case through a proposal reference in the escalate request (a contract change).
+- **MCP elicitation for approval.** Could become a convenience on top of the server-side gate once client support settles; never the control.
+- **Tracking sensitive values across a session.** Remember values returned earlier (ARR, contacts) and refuse writes that contain them, not just ones that match patterns.
+- **Homoglyph and base64 detection.** Map confusable characters across scripts to a skeleton before detecting; decode base64-looking runs and scan them.
+- **Client-side allow-listing against tool poisoning.** The host pins which servers and tool descriptions it trusts; outside this server's control.
+- **A test for every tool error code.** The S5 subset is tested (scope, not found, rate limit, session cap, validation, sensitive content, invalid state, approval outcomes); `upstream_unavailable` and `unauthorized` are covered only by the problem-mapping unit test.
+- **MCP resources and prompts, and an approval-status tool.** Not needed for the question; a status tool would let the agent report a decision without the harness telling it.
+- **A real token service and identity provider.** The dev issuer simulates both; production uses the company IdP's token-exchange endpoint.
+- **Agent evals.** One scripted demo question and targeted injection tests now; a golden set run on every prompt, tool-description or model change later.

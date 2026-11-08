@@ -67,7 +67,7 @@ The contract already specifies it; this section fixes how it's built.
 
 | Tool | Annotations | Inputs | Output (compact) |
 |---|---|---|---|
-| `search_cases` | read-only | `status[]`, `priority[]` and `tier` as enums; `minOpenHours` (0–8760); `renewalWithinDays` (0–365); `accountId` (pattern); `limit` (1–20, default 10); `cursor` | rows: `caseId`, `subject` (untrusted), `priority`, `status`, `openHours`, `account {id, name, tier, renewalDate}`; plus `nextCursor` and `degraded` |
+| `search_cases` | read-only | `status[]` (omitted: every state except `closed`; REST applies no filter), `priority[]` and `tier` as enums; `minOpenHours` (0–8760); `renewalWithinDays` (0–365); `accountId` (pattern); `limit` (1–20, default 10); `cursor` | rows: `caseId`, `subject` (untrusted), `priority`, `status`, `openHours`, `account {id, name, tier, renewalDate}`; plus `nextCursor` and `degraded` |
 | `get_customer_summary` | read-only | `customerId` (pattern) | name, tier, entitlement summary, usage summary, `arr` only if the API returned it, degraded sources |
 | `get_case` | read-only | `caseId` (pattern) | the case row plus the latest 5 comments (author, time, body marked untrusted), `escalation` |
 | `add_case_comment` | write, not destructive, idempotent | `caseId`, `body` (1–1000 characters) | the comment as created (ID, author, time, body), echoed back |
@@ -112,7 +112,7 @@ The contract already specifies it; this section fixes how it's built.
 
 ### 2.6 Demo (`mcp/demo/`)
 - **`make demo`:** a dry run by default. It starts the MCP server, lists the tools and prints the request it would send.
-- **`--live`:** the Anthropic API (`claude-sonnet-5-5`) driving the MCP client, with a cap on tool calls. It needs the human's go-ahead in the session.
+- **`--live`:** the OpenAI Responses API (`gpt-6-luna` by default, `OPENAI_MODEL` to override) driving the MCP client, with a cap on tool calls. (Changed from the Anthropic API during the build: a key was already available.) It needs the human's go-ahead in the session.
 - **The committed transcript** shows:
   - the sample question answered with the ground-truth IDs;
   - the injected comment on CS-10240 being read and flagged, with no escalation following;
