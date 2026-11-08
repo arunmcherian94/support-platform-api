@@ -13,7 +13,7 @@ type Handler = (url: string, init: RequestInit) => Promise<Response>;
 const reply =
   (status: number, body = '', headers: Record<string, string> = {}): Handler =>
   () =>
-    Promise.resolve(new Response(status === 304 ? null : body, { status, headers }));
+    Promise.resolve(new Response(body, { status, headers }));
 
 /** Never answers; rejects when the attempt's signal aborts (the timeout). */
 const hang: Handler = (_url, init) =>
@@ -104,12 +104,6 @@ describe('successes', () => {
     expect(outcome.ok && outcome.value.text).toBe('{"a":1}');
     expect(outcome.ok && outcome.value.headers.get('etag')).toBe('"v1"');
     expect(calls[0]?.url).toBe('http://cases.test/cases?status=open');
-  });
-
-  it('returns 304 as a success', async () => {
-    const { client } = setup([reply(304)]);
-    const outcome = await settle(client.request({ path: '/feed' }));
-    expect(outcome.ok && outcome.value.status).toBe(304);
   });
 });
 

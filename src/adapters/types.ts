@@ -16,7 +16,7 @@ export interface UpstreamRequest {
 }
 
 export interface UpstreamResponse {
-  /** 2xx or 304. Every other status becomes an UpstreamError. */
+  /** 2xx. Every other status becomes an UpstreamError. */
   status: number;
   headers: Headers;
   text: string;
@@ -24,7 +24,7 @@ export interface UpstreamResponse {
 
 /**
  * HTTP to one upstream behind its resilience policy (timeout, retry, breaker).
- * Throws UpstreamError for anything other than 2xx/304; propagates
+ * Throws UpstreamError for anything other than 2xx; propagates
  * X-Request-Id and traceparent from the request context.
  */
 export interface UpstreamClient {

@@ -1,6 +1,7 @@
 # ADR-0003: Entitlement data — snapshot access, source precedence and account IDs
 
 - **Status:** Accepted (2026-11-06, Gate 1)
+- **Amended:** 2026-11-08: polls are plain fetches (no conditional GET); `/readyz` no longer lists unmatched IDs, which are logged instead.
 - **Deciders:** @arunmcherian94 (repository owner)
 
 ## Context
@@ -20,7 +21,7 @@ Agents must know how old data is before acting on it, and Finance needs ARR from
 
 **1. Snapshot access, not a fetch per request.**
 - The adapter loads both feeds at start-up, then polls each one every **15 minutes** (`ENTITLEMENT_REFRESH_SECONDS`; the demo and tests set it lower).
-- Polls are conditional (`If-None-Match` / `If-Modified-Since`). An unchanged feed costs a `304`, not a re-parse.
+- Each poll is a plain fetch. An unchanged body is not parsed or rebuilt again.
 - So data age is bounded by the export cadence plus at most one poll interval, not by the poll interval alone.
 - Requests read the last good snapshot.
 - If a refresh fails, we keep serving the last good snapshot, and `asOf` shows its real age. That makes stale-on-error a fallback built into the design.
@@ -43,7 +44,7 @@ Agents must know how old data is before acting on it, and Finance needs ARR from
 **3. Account ID normalisation in two steps.**
 - **Canonical format** `ACC-NNN`: prefix uppercased, numeric part zero-padded to at least three digits. This handles formatting variants (`acc-7`, `ACC-07` → `ACC-007`).
 - **Explicit crosswalk** (`mocks/fixtures/entitlement/id-crosswalk.csv`, `source_id → canonical_id`) for known aliases that formatting can't reconcile, e.g. `ACC-77 → ACC-007`. This stands in for a master-data-management mapping. The crosswalk is applied before format normalisation.
-- **Unmatched IDs are reported, never dropped or guessed.** Records whose ID matches nothing in the other systems are logged as data-quality events (once per ID). They are not listed on `/readyz`, which needs no authentication. We never match on account name.
+- **Unmatched IDs are reported, never dropped or guessed.** Records whose ID matches nothing in the other systems are logged as data-quality events (case accounts once per ID). They are not listed on `/readyz`, which needs no authentication. We never match on account name.
 
 **4. One row per account; duplicates resolved by latest contract end.**
 The scenario describes the ERP as holding "accounts, contracts": that is what the ERP stores, not the shape of the export we integrate with. The sample CSV, the XML feed (keyed by account) and the sample question are all account-level, so we take the export as one row per account, rolled up by the ERP.

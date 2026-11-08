@@ -41,11 +41,11 @@ Domain code depends only on ports. Switching to ServiceNow or another ERP means 
 
 | Upstream | Mock interface | Notes |
 |---|---|---|
-| Case system | `GET /cases` (upstream filters: status, priority, opened range), `GET /cases/{id}`, `POST /cases/{id}/comments`, `PATCH /cases/{id}` | `PATCH` only accepts the escalation fields and requires the current `version`. It exists because our escalate endpoint (Part C) writes through to the case system, as a Salesforce record update would. Salesforce-style pagination: opaque `nextRecordsUrl`. Each case has a monotonic `version`. Can return 429 with `Retry-After`. |
+| Case system | `GET /cases` (upstream filters: status, priority, opened range), `GET /cases/{id}`, `POST /cases/{id}/comments`, `PATCH /cases/{id}` | `PATCH` only accepts the escalation fields and requires the current `version`. It exists because our escalate endpoint (Part C) writes through to the case system, as a Salesforce record update would. Returns one page per query; the platform pages by keyset (sort plus the last row's value and ID). Each case has a monotonic `version`. Can return 429 with `Retry-After`. |
 | Entitlement system | `GET /exports/accounts.csv`, `GET /feeds/entitlements.xml` | Export timestamp in a response header (CSV) or root attribute (XML), used as `asOf`. |
 | Usage warehouse | `POST /api/v2/statements` with `{ statement, bindings }`, backed by a SQLite file | Mirrors the shape of Snowflake's SQL REST API, so the warehouse gets real network timeouts and the same fault injection as the others. |
 
-**Fault injection** is per upstream, set by env at start-up or at runtime through a mock admin endpoint: added latency, error rate, forced status (e.g. 503, 429) and down.
+**Fault injection** is per upstream, set by env at start-up or at runtime through a mock admin endpoint: added latency, forced status (e.g. 503, 429) and down.
 
 **Data access per upstream:**
 - **Cases are not cached.** Agents act on case state, so every read goes upstream. Writes (comment, escalate) go through to the case system synchronously; we never own case state. Our ETag is opaque, derived from the upstream `version`.

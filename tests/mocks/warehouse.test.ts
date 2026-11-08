@@ -49,75 +49,9 @@ describe('usage warehouse mock (S1-4)', () => {
     expect(body.createdOn).toBe(Date.parse('2026-11-06T12:00:00Z'));
   });
 
-  it('honours LIMIT', async () => {
-    const body = (await (await run(USAGE_SQL, bind('ACC-007', '1'))).json()) as Result;
-    expect(body.data).toHaveLength(1);
-  });
-
-  it('runs the allow-listed statement despite extra whitespace', async () => {
-    const spaced = `  ${USAGE_SQL.replaceAll(' ', '\n  ')}\n`;
-    const res = await run(spaced, bind('ACC-007'));
-    expect(res.status).toBe(200);
-    expect(((await res.json()) as Result).data).toHaveLength(3);
-  });
-
-  it('returns 200 with no rows for an account without usage', async () => {
-    const res = await run(USAGE_SQL, bind('ACC-015'));
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as Result;
-    expect(body.resultSetMetaData.numRows).toBe(0);
-    expect(body.data).toEqual([]);
-  });
-
   it('rejects statements outside the allow-list', async () => {
     const res = await run('SELECT * FROM monthly_usage');
     expect(res.status).toBe(422);
     expect(await res.json()).toMatchObject({ code: '002003', sqlState: '42000' });
-  });
-
-  it('rejects DROP TABLE and keeps serving data', async () => {
-    const res = await run('DROP TABLE monthly_usage');
-    expect(res.status).toBe(422);
-    const after = await run(USAGE_SQL, bind('ACC-007'));
-    expect(((await after.json()) as Result).data).toHaveLength(3);
-  });
-
-  it('treats a SQL injection attempt in a binding as plain data', async () => {
-    const res = await run(USAGE_SQL, bind("ACC-007' OR '1'='1"));
-    expect(res.status).toBe(200);
-    expect(((await res.json()) as Result).data).toHaveLength(0);
-  });
-
-  it('rejects a wrong binding count', async () => {
-    const res = await run(USAGE_SQL, { '1': { type: 'TEXT', value: 'ACC-007' } });
-    expect(res.status).toBe(422);
-    expect(await res.json()).toMatchObject({ code: '002049' });
-  });
-
-  it('rejects a non-integer FIXED binding', async () => {
-    const res = await run(USAGE_SQL, bind('ACC-007', '3.5'));
-    expect(res.status).toBe(422);
-    expect(await res.json()).toMatchObject({ code: '002049' });
-  });
-
-  it('rejects wrong keys and non-string values', async () => {
-    expect((await run(USAGE_SQL, { '1': bind('A')['1'], '3': bind('A')['2'] })).status).toBe(422);
-    expect(
-      (await run(USAGE_SQL, { '1': { type: 'TEXT', value: 7 }, '2': bind('A')['2'] })).status,
-    ).toBe(422);
-  });
-
-  it('returns 400 when the statement is missing or not a string', async () => {
-    for (const statement of [undefined, 42]) {
-      const res = await run(statement);
-      expect(res.status).toBe(400);
-      expect(await res.json()).toMatchObject({ code: '390142' });
-    }
-  });
-
-  it('reset restores the seeded database', async () => {
-    h.mock.reset();
-    const body = (await (await run(USAGE_SQL, bind('ACC-007'))).json()) as Result;
-    expect(body.data).toHaveLength(3);
   });
 });

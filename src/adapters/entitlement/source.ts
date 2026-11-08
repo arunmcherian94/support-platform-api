@@ -29,20 +29,20 @@ export interface EntitlementSourceOptions {
   crosswalk?: ReadonlyMap<string, string>;
 }
 
-/** One feed's last good data, its validators and its health. */
+/** One feed's last good data, the body it came from, and its health. */
 interface FeedCache<Rows> {
   system: EntitlementSystem;
   path: string;
   rows: Rows | null;
+  /** The body and stated time last parsed: if neither changed, nothing is parsed or rebuilt. */
+  version: string | null;
   asOf: string | null;
   status: FeedState['status'];
-  etag: string | null;
-  lastModified: string | null;
 }
 
 interface Parsed<Rows> {
   rows: Rows;
-  /** The time the source says it produced the data, if it says. */
+  /** The time the source says it produced the data; required. */
   producedAt: string | null;
   events: DataQualityEvent[];
 }
@@ -80,19 +80,17 @@ export function createEntitlementSource(options: EntitlementSourceOptions): Enti
     system: 'entitlement_export',
     path: EXPORT_PATH,
     rows: null,
+    version: null,
     asOf: null,
     status: 'unavailable',
-    etag: null,
-    lastModified: null,
   };
   const entitlementFeed: FeedCache<XmlAccountRow[]> = {
     system: 'entitlement_feed',
     path: FEED_PATH,
     rows: null,
+    version: null,
     asOf: null,
     status: 'unavailable',
-    etag: null,
-    lastModified: null,
   };
 
   let accounts: ReadonlyMap<string, AccountEntitlement> | null = null;
@@ -112,28 +110,24 @@ export function createEntitlementSource(options: EntitlementSourceOptions): Enti
   async function refreshFeed<Rows>(
     feed: FeedCache<Rows>,
     parse: (response: UpstreamResponse) => Parsed<Rows>,
+    /** What identifies this content: the body, plus the stated time when it travels outside it. */
+    versionOf: (response: UpstreamResponse) => string,
   ): Promise<boolean> {
-    const fetchedAt = clock.now().getTime();
-    const headers: Record<string, string> = {};
-    if (feed.rows !== null) {
-      if (feed.etag !== null) headers['If-None-Match'] = feed.etag;
-      if (feed.lastModified !== null) headers['If-Modified-Since'] = feed.lastModified;
-    }
     try {
-      const response: UpstreamResponse = await client.request({ path: feed.path, headers });
-      if (response.status === 304) {
-        if (feed.rows === null) throw new Error('304 Not Modified with no data loaded');
+      const response: UpstreamResponse = await client.request({ path: feed.path });
+      const version = versionOf(response);
+      if (version === feed.version) {
         feed.status = 'ok';
         return false;
       }
       const parsed = parse(response);
+      // Without the source's own time we can't judge staleness: treat as a failed refresh.
+      const producedAt = validTime(parsed.producedAt);
+      if (producedAt === null) throw new Error('feed did not say when it was produced');
       logEvents(parsed.events);
-      const lastModified = response.headers.get('Last-Modified');
-      const producedAt = validTime(parsed.producedAt) ?? validTime(lastModified) ?? fetchedAt;
       feed.rows = parsed.rows;
+      feed.version = version;
       feed.asOf = rfc3339(producedAt);
-      feed.etag = response.headers.get('ETag');
-      feed.lastModified = lastModified;
       feed.status = 'ok';
       return true;
     } catch (error) {
@@ -164,20 +158,31 @@ export function createEntitlementSource(options: EntitlementSourceOptions): Enti
     });
     logEvents(built.events);
     accounts = built.accounts;
+    // An ID that now has a record is forgotten, so it is logged again if it disappears later.
+    for (const id of reported) if (accounts.has(id)) reported.delete(id);
   }
 
   async function refresh(): Promise<void> {
     const [exportChanged, feedChanged] = await Promise.all([
-      // Export time: X-Export-Timestamp, else Last-Modified, else fetch time.
-      refreshFeed(exportFeed, (response) => {
-        const { rows, events } = parseAccountsCsv(response.text);
-        return { rows, events, producedAt: response.headers.get('X-Export-Timestamp') };
-      }),
-      // Feed time: generatedAt, else Last-Modified, else fetch time.
-      refreshFeed(entitlementFeed, (response) => {
-        const { rows, events, generatedAt } = parseEntitlementsXml(response.text);
-        return { rows, events, producedAt: generatedAt };
-      }),
+      // Export time: the X-Export-Timestamp header.
+      refreshFeed(
+        exportFeed,
+        (response) => {
+          const { rows, events } = parseAccountsCsv(response.text);
+          return { rows, events, producedAt: response.headers.get('X-Export-Timestamp') };
+        },
+        (response) => `${response.headers.get('X-Export-Timestamp') ?? ''}\n${response.text}`,
+      ),
+      // Feed time: the generatedAt attribute.
+      refreshFeed(
+        entitlementFeed,
+        (response) => {
+          const { rows, events, generatedAt } = parseEntitlementsXml(response.text);
+          return { rows, events, producedAt: generatedAt };
+        },
+        // generatedAt is inside the body.
+        (response) => response.text,
+      ),
     ]);
     if (exportChanged || feedChanged) rebuild();
   }
