@@ -1,6 +1,6 @@
 # CLAUDE.md: support-platform-api
 
-A Customer Entitlement & Support Case API in front of three mocked upstreams (case system, entitlement CSV/XML exports, usage warehouse), plus an MCP server that exposes it to an LLM agent. Decisions and trade-offs live in `DECISIONS.md` and `docs/adr/`; behaviour is specified in `docs/specs/`. Read those before changing behaviour.
+A Customer Entitlement & Support Case API in front of three mocked upstreams (case system, entitlement CSV/XML exports, usage warehouse), plus an MCP server that exposes it to an LLM agent. Decisions and trade-offs live in `DECISIONS.md` (summary), `docs/notes/decision-log.md` (full) and `docs/adr/`; behaviour is specified in `docs/specs/`. Read those before changing behaviour.
 
 ## Commands
 ```sh
@@ -41,6 +41,6 @@ make demo-live    # paid OpenAI run: only with --live and the human's go-ahead i
 **Git:** one branch per PR, `<area>/<scope>` (`part-x/`, `spec/`, `contract/`, `fix/`, `docs/`, `chore/`). Conventional Commits, imperative subject ≤ 72 characters, body says why. One logical change per commit; every commit builds and passes. Merge commits, not squash.
 
 **Record as you go:**
-- a decision in `DECISIONS.md` when it's made (an ADR in `docs/adr/` if significant: Status, Context, Decision, Alternatives, Consequences, Revisit when);
-- a dated entry in `docs/journal.md` per phase;
+- a decision in `docs/notes/decision-log.md` when it's made, and in `DECISIONS.md` if it is a key trade-off or skip (an ADR in `docs/adr/` if significant: Status, Context, Decision, Alternatives, Consequences, Revisit when);
+- a dated entry in `docs/notes/journal.md` per phase;
 - every AI mistake the human or a test catches, as one line in `docs/notes/ai-usage-log.md` (what, how caught, fix).
