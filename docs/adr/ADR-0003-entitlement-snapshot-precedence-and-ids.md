@@ -43,7 +43,7 @@ Agents must know how old data is before acting on it, and Finance needs ARR from
 **3. Account ID normalisation in two steps.**
 - **Canonical format** `ACC-NNN`: prefix uppercased, numeric part zero-padded to at least three digits. This handles formatting variants (`acc-7`, `ACC-07` → `ACC-007`).
 - **Explicit crosswalk** (`mocks/fixtures/entitlement/id-crosswalk.csv`, `source_id → canonical_id`) for known aliases that formatting can't reconcile, e.g. `ACC-77 → ACC-007`. This stands in for a master-data-management mapping. The crosswalk is applied before format normalisation.
-- **Unmatched IDs are reported, never dropped or guessed.** Records whose ID matches nothing in the other systems are logged as data-quality events, counted in a metric, and listed in the `/readyz` detail. We never match on account name.
+- **Unmatched IDs are reported, never dropped or guessed.** Records whose ID matches nothing in the other systems are logged as data-quality events (once per ID). They are not listed on `/readyz`, which needs no authentication. We never match on account name.
 
 **4. One row per account; duplicates resolved by latest contract end.**
 The scenario describes the ERP as holding "accounts, contracts": that is what the ERP stores, not the shape of the export we integrate with. The sample CSV, the XML feed (keyed by account) and the sample question are all account-level, so we take the export as one row per account, rolled up by the ERP.

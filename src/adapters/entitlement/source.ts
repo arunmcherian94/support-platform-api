@@ -96,7 +96,6 @@ export function createEntitlementSource(options: EntitlementSourceOptions): Enti
   };
 
   let accounts: ReadonlyMap<string, AccountEntitlement> | null = null;
-  let xmlOnly: string[] = [];
   const reported = new Set<string>();
   let timer: NodeJS.Timeout | null = null;
   let started: Promise<void> | null = null;
@@ -165,7 +164,6 @@ export function createEntitlementSource(options: EntitlementSourceOptions): Enti
     });
     logEvents(built.events);
     accounts = built.accounts;
-    xmlOnly = built.xmlOnlyIds;
   }
 
   async function refresh(): Promise<void> {
@@ -212,14 +210,13 @@ export function createEntitlementSource(options: EntitlementSourceOptions): Enti
       return { usable: true, snapshot: current };
     },
 
-    unmatchedAccountIds(): string[] {
-      // A reported ID that a later export added is no longer unmatched.
-      const stillUnmatched = [...reported].filter((id) => accounts?.has(id) !== true);
-      return [...new Set([...xmlOnly, ...stillUnmatched])].sort();
-    },
-
     reportUnmatched(accountId: string): void {
+      if (accounts?.has(accountId) === true || reported.has(accountId)) return;
       reported.add(accountId);
+      logger.warn(
+        { event: 'data_quality', kind: 'unmatched_account', accountId },
+        'case account has no entitlement record',
+      );
     },
 
     start(): Promise<void> {

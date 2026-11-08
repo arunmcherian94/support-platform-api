@@ -30,7 +30,7 @@ Domain code (joins, filters, the usage trend, cursors) lives in `src/domain/`, h
 - **Duplicates:** the row with the latest `contract_end` wins; each duplicate is logged.
 - **Precedence per field:** tier and renewal from the XML when the feed's `generatedAt` is newer than the CSV export's time, otherwise from the CSV. Name and ARR come only from the CSV.
 - **Staleness:** the snapshot is unusable when it never loaded or the CSV export is older than 48 hours. A failed refresh keeps the last good snapshot, and the affected source reports `stale` in `sources[]`.
-- **Unmatched IDs:** XML accounts with no CSV row, and case account IDs with no entitlement record seen during reads, are kept in a set and listed in `/readyz`.
+- **Unmatched IDs:** XML accounts with no CSV row, and case account IDs with no entitlement record seen during reads, are logged as data-quality events, once per ID. They are not listed on `/readyz`, which needs no authentication.
 - **ARR stays in the snapshot.** Whether a response includes it is decided at the response boundary (§2.4), never in the snapshot.
 
 ### 2.3 Resilience (cockatiel 4.0.0, Gate 3a)
@@ -85,7 +85,6 @@ Every filter runs in the case system, so it returns exactly one page and nothing
 ### 2.7 Readiness (completes S2's interim checks)
 - `entitlementSnapshot`: `ok` when usable; `unavailable` fails readiness (503).
 - `caseSystem` and `usageWarehouse` come from their breaker state, not a live probe: closed = `ok`, half-open = `degraded`, open = `unavailable`. They never fail readiness, so a dependency's outage doesn't take every replica out of rotation.
-- `unmatchedAccountIds`: the set from §2.2, sorted.
 
 ### 2.8 Config
 New variables, validated at start-up: `ENTITLEMENT_REFRESH_SECONDS` (≥ 1) and `REQUEST_BUDGET_MS` (default 10000). Upstream base URLs already exist. Per-attempt timeouts and retry counts are constants in one file, not env: they're design decisions, reviewed with the code. The budget is env because it depends on what sits in front of the service.
@@ -113,7 +112,7 @@ New variables, validated at start-up: `ENTITLEMENT_REFRESH_SECONDS` (≥ 1) and 
 | S3-9 | Paging through the Copilot query with `limit=2` returns all five cases exactly once, in order. A cursor reused with a changed filter or sort, or a tampered cursor, gets 400 `invalid-cursor`. Ties on `openedAt` are ordered by case ID. Entitlement filters reach the mock as an account list (no full scan); more than 500 matching accounts gets 400. |
 | S3-10 | Filter boundaries hold: `openedBefore` is exclusive and `openedAfter` inclusive (a case opened exactly at the bound); `renewalWithinDays=89` includes ACC-012 and excludes ACC-015; a renewal in the past never matches. |
 | S3-11 | `GET /v1/cases/CS-10231` returns the canonical case, an `ETag` derived from its version, comments newest last, and `commentCount`. Unknown case → 404. No upstream field names (`Status`, `Comments`) appear in any response. |
-| S3-12 | `/readyz` reports the snapshot and the breaker states, fails only on the database or the snapshot, and lists ACC-099 as unmatched once a read has seen it. |
+| S3-12 | `/readyz` reports the snapshot and the breaker states, and fails only on the database or the snapshot. A read that sees ACC-099 logs it as unmatched; `/readyz` lists no account IDs. |
 | S3-13 | Upstream calls carry `X-Request-Id` and `traceparent`, checked at the mock. |
 | S3-14 | Every response in these tests passes strict response validation (closed schemas), as for all tests. |
 

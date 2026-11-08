@@ -48,9 +48,7 @@ export type SnapshotState =
 export interface EntitlementSource {
   /** The current snapshot and whether it may be used, judged at the injected clock's now. */
   current(): SnapshotState;
-  /** Account IDs seen in one system that match nothing in the others, sorted. */
-  unmatchedAccountIds(): string[];
-  /** Records a case account ID with no entitlement record (seen during reads). */
+  /** Logs a case account ID with no entitlement record (seen during reads), once per ID. */
   reportUnmatched(accountId: string): void;
   /**
    * Loads once and starts polling. Resolves after the first attempt, success or

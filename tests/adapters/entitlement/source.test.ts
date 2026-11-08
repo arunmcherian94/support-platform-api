@@ -304,18 +304,14 @@ describe('createEntitlementSource: timestamps', () => {
 });
 
 describe('createEntitlementSource: unmatched IDs and data-quality logs', () => {
-  it('lists feed-only and reported IDs, sorted and without duplicates', async () => {
-    const extra = XML.replace(
-      '</entitlements>',
-      '  <account id="ACC-099"><tier>Gold</tier><renewal>2027-01-01</renewal></account>\n</entitlements>',
-    );
-    const { source } = harness({ [XML_PATH]: xmlRoute(extra) });
+  it('logs each unmatched case account once, and never one that has a record', async () => {
+    const { source, logs } = harness();
     await source.start();
-    source.reportUnmatched('ACC-123');
-    source.reportUnmatched('ACC-050');
+    source.reportUnmatched('ACC-099');
     source.reportUnmatched('ACC-099');
     source.reportUnmatched('ACC-007'); // has a record: not unmatched
-    expect(source.unmatchedAccountIds()).toEqual(['ACC-050', 'ACC-099', 'ACC-123']);
+    const unmatched = logs().filter((line) => line.kind === 'unmatched_account');
+    expect(unmatched.map((line) => line.accountId)).toEqual(['ACC-099']);
   });
 
   it('logs data-quality events with account IDs but never names or ARR', async () => {
