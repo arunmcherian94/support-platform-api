@@ -49,8 +49,7 @@ interface Order {
   after?: After;
 }
 
-interface Locator extends Order {
-  offset: number;
+interface Page extends Order {
   filters: Filters;
   pageSize: number;
 }
@@ -226,41 +225,6 @@ function matches(record: CaseRecord, f: Filters): boolean {
   return true;
 }
 
-function encodeLocator(locator: Locator): string {
-  return Buffer.from(JSON.stringify(locator), 'utf8').toString('base64url');
-}
-
-function decodeLocator(token: string): Locator | undefined {
-  try {
-    const parsed: unknown = JSON.parse(Buffer.from(token, 'base64url').toString('utf8'));
-    if (!isPlainObject(parsed)) return undefined;
-    const { offset, filters, pageSize, sort, after } = parsed;
-    if (typeof offset !== 'number' || !Number.isInteger(offset) || offset < 0) return undefined;
-    if (typeof pageSize !== 'number' || !Number.isInteger(pageSize)) return undefined;
-    if (pageSize < 1 || pageSize > 200) return undefined;
-    if (!isPlainObject(filters)) return undefined;
-    // Re-validate filters through the query parser so a forged token cannot smuggle odd values.
-    const asQuery: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(filters)) {
-      asQuery[k] = Array.isArray(v) ? (v as unknown[]).join(',') : v;
-    }
-    if (sort !== undefined) asQuery.sort = sort;
-    if (after !== undefined) {
-      if (!isPlainObject(after)) return undefined;
-      asQuery.afterValue = after.value;
-      asQuery.afterId = after.id;
-    }
-    const checked = parseQuery(asQuery);
-    if (typeof checked === 'string') return undefined;
-    const order: Order = {};
-    if (checked.sort !== undefined) order.sort = checked.sort;
-    if (checked.after !== undefined) order.after = checked.after;
-    return { offset, filters: checked.filters, pageSize, ...order };
-  } catch {
-    return undefined;
-  }
-}
-
 function parseIfMatch(header: string | undefined): string | undefined {
   if (header === undefined) return undefined;
   const trimmed = header.trim();
@@ -273,24 +237,14 @@ export function casesRouter(deps: UpstreamDeps): UpstreamModule {
   let commentCounter = maxCommentNumber(store);
   const router = Router();
 
-  const page = (res: Response, locator: Locator): void => {
-    const { sort, after } = locator;
+  // One page per call: the adapter pages by keyset (sort + afterValue/afterId).
+  const page = (res: Response, query: Page): void => {
+    const { sort, after } = query;
     const sorted = store
-      .filter((c) => matches(c, locator.filters))
+      .filter((c) => matches(c, query.filters))
       .filter((c) => sort === undefined || after === undefined || isAfter(c, sort, after))
       .sort(compareBy(sort));
-    const records = sorted.slice(locator.offset, locator.offset + locator.pageSize);
-    const nextOffset = locator.offset + locator.pageSize;
-    const more = nextOffset < sorted.length;
-    const body: Record<string, unknown> = {
-      totalSize: sorted.length,
-      done: !more,
-      records,
-    };
-    if (more) {
-      body.nextRecordsUrl = `/cases/query/${encodeLocator({ ...locator, offset: nextOffset })}`;
-    }
-    res.status(200).json(body);
+    res.status(200).json({ records: sorted.slice(0, query.pageSize) });
   };
 
   router.get('/cases', (req, res) => {
@@ -300,16 +254,7 @@ export function casesRouter(deps: UpstreamDeps): UpstreamModule {
       return;
     }
     const { filters, pageSize, ...order } = parsed;
-    page(res, { offset: 0, filters, pageSize, ...order });
-  });
-
-  router.get('/cases/query/:token', (req, res) => {
-    const locator = decodeLocator(req.params.token);
-    if (!locator) {
-      sfError(res, 400, 'INVALID_QUERY_LOCATOR', 'The query locator is malformed.');
-      return;
-    }
-    page(res, locator);
+    page(res, { filters, pageSize, ...order });
   });
 
   router.get('/cases/:id', (req, res) => {

@@ -102,10 +102,7 @@ export async function startMockServer(
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const port = Number(process.env.MOCK_PORT ?? 8081);
-  const faults = new FaultInjector(
-    Number(process.env.MOCK_SEED ?? 42),
-    faultsFromEnv(process.env.MOCK_FAULTS),
-  );
+  const faults = new FaultInjector(faultsFromEnv(process.env.MOCK_FAULTS));
   const { url } = await startMockServer(port, { faults });
   console.log(`mock upstreams listening on ${url} (NOW=${process.env.NOW ?? 'system time'})`);
 }

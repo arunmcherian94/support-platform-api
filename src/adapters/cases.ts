@@ -195,7 +195,7 @@ export function createCaseSystem(client: UpstreamClient): CaseSystem {
       return { version: fresh.version, etag: fresh.etag };
     },
     async search(query: CaseQuery): Promise<CasePage> {
-      // Only the first upstream page is used; keyset paging replaces nextRecordsUrl.
+      // One upstream page per request: the platform pages by keyset (sort + after).
       const response = await client.request({ path: searchPath(query) });
       const body = parseJson(response.text);
       if (!isRaw(body) || !Array.isArray(body.records)) throw bad('records is not an array');
