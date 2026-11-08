@@ -262,3 +262,12 @@ The two slices (auth, rate limits) ran in parallel on opus in worktrees. Integra
 - Docs: contract testing described as what runs (strict response validation); the stretch recorded as the local queue for `case.escalated`; a Postman environment file added and wired into `make postman`; `CLAUDE.md` cut to commands, layout, rules and workflow; the requirements table moved into DECISIONS and the Part D requirements into draft spec S6.
 
 **Open questions.** None.
+
+## 2026-11-08 — Part D: platform write-up and README
+
+**What was done.**
+- `PLATFORM.md`: a position on each of D1–D8, separating what is built here from what is proposed; SLO targets set for a tier-1 internal service and marked as not measured.
+- `README.md`: quick start, test, demo, deliverables map and folder layout. `make token` added so the first API call needs no JSON parsing.
+- Fresh-clone check (S6-5): clone, `make install`, `make run` and the sample question returned the five ground-truth cases in 8 s (npm cache warm); `make demo`, `make postman` (22 assertions) and `make check` (554 tests) passed in the clone.
+
+**Open questions.** None.
