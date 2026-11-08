@@ -1,6 +1,7 @@
 /**
  * The Support Copilot demo (S5 §2.6): an OpenAI model answers the sample
- * question through the MCP server, over stdio, as the user jdoe.
+ * question through the MCP server, over stdio, as the user jdoe (or the user
+ * of APPROVER_CLIENT_ID; DEMO_QUESTION replaces the question).
  *
  *   make demo          dry run: starts the MCP server, lists the tools and
  *                      prints the request it would send. No LLM call.
@@ -41,8 +42,9 @@ const INSTRUCTIONS = [
 ].join('\n');
 
 const QUESTION =
+  process.env.DEMO_QUESTION ??
   'Which Platinum customers have P1 cases open for more than 48 hours and a renewal in the next 90 days? ' +
-  'Check the latest comments on each matching case, then propose an escalation for the one most at risk of breaching its SLA.';
+    'Check the latest comments on each matching case, then propose an escalation for the one most at risk of breaching its SLA.';
 
 const SERVER_ENV = [
   'PATH',
@@ -59,7 +61,7 @@ const SERVER_ENV = [
 const apiUrl = (process.env.API_URL ?? 'http://127.0.0.1:8080').replace(/\/+$/, '');
 const tokenUrl = process.env.TOKEN_URL ?? `${apiUrl}/dev/oauth/token`;
 
-/** jdoe's token from the dev issuer: the human the agent acts for, and who approves. */
+/** The human's token from the dev issuer (jdoe by default): who the agent acts for, and who approves. */
 function humanToken() {
   return devApproverToken(
     tokenUrl,
@@ -130,7 +132,7 @@ async function dryRun(mcp: Client): Promise<void> {
   );
 }
 
-async function liveRun(mcp: Client): Promise<void> {
+async function liveRun(mcp: Client, userSub: string): Promise<void> {
   const openai = new OpenAI();
   const tools = await openAiTools(mcp);
   const db = openDatabase(process.env.DB_PATH ?? 'data/platform.db');
@@ -143,7 +145,7 @@ async function liveRun(mcp: Client): Promise<void> {
     '',
     `- When: ${started.toISOString()}`,
     `- Model: OpenAI ${MODEL} (Responses API, reasoning effort low); caps: ${String(MAX_TURNS)} turns, ${String(MAX_TOOL_CALLS)} tool calls`,
-    `- Acting for: jdoe, through the delegated token (act.sub = support-copilot)`,
+    `- Acting for: ${userSub}, through the delegated token (act.sub = support-copilot)`,
     '',
     `## User`,
     '',
@@ -290,7 +292,7 @@ async function main(): Promise<void> {
   const human = await humanToken();
   const mcp = await connectMcp(human.token);
   try {
-    await (live ? liveRun(mcp) : dryRun(mcp));
+    await (live ? liveRun(mcp, human.sub) : dryRun(mcp));
   } finally {
     await mcp.close();
   }
