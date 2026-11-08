@@ -68,7 +68,7 @@ New variables, validated at start-up: `WEBHOOK_URL` (optional), `WEBHOOK_SECRET`
 
 **Out of scope:**
 - escalate and the `case.escalated` payload's content (Part C);
-- the transactional outbox (pass 2; the deliveries table already acts as one for this event);
+- a separate transactional outbox and broker (the deliveries table and dispatcher already act as the local queue for this event);
 - a subscription management API, secret rotation, manual redelivery tooling for dead deliveries, a sweep of expired keys and a runnable receiver app (deferred);
 - audit of writes (Part C);
 - ordering guarantees (the contract says none).

@@ -18,7 +18,7 @@ The service fronts three mocked upstreams for two kinds of consumer: apps and iP
 | Auth | `jose` for JWT signing (dev issuer), JWKS and verification | 6.2 |
 | Logging | `pino`, JSON | 10.4 |
 | MCP | TypeScript SDK v2 (`@modelcontextprotocol/server`, `@modelcontextprotocol/client`), spec 2026-07-28, stdio | 2.4 |
-| Tests | Vitest; Schemathesis (via `uvx`) against the running server; Newman for the Postman collection | 5.1 / 4.33 / 6.2 |
+| Tests | Vitest (strict response validation in every test); Newman for the Postman collection. Schemathesis was checked here but not adopted (DECISIONS, "Skipped") | 5.1 / 6.2 |
 | Contract lint | Spectral CLI with a custom ruleset; oasdiff for breaking-change detection | 6.17 / 1.35 |
 
 ## Alternatives considered

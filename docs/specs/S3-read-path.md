@@ -95,7 +95,6 @@ New variables, validated at start-up: `ENTITLEMENT_REFRESH_SECONDS` (≥ 1) and 
 - a read model for cross-system filters at scale (deferred, ADR-0002);
 - caching cases (rejected, decision 6);
 - searching customers by alias or name (deferred, DECISIONS "Skipped");
-- Schemathesis (run locally with the Postman and CI PR).
 
 ## 3. Acceptance criteria
 
