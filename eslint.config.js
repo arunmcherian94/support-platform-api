@@ -11,7 +11,7 @@ export default tseslint.config(
       parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname },
     },
     rules: {
-      // `any` needs a justification comment (CLAUDE.md §10), so the rule stays on.
+      // `any` needs a justification comment (CLAUDE.md, Rules), so the rule stays on.
       '@typescript-eslint/no-explicit-any': 'error',
       '@typescript-eslint/restrict-template-expressions': ['error', { allowNumber: true }],
       // Unused parameters are allowed when prefixed with `_` (e.g. interface-shaped handlers).
