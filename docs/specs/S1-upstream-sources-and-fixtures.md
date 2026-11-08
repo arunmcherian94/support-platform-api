@@ -19,10 +19,10 @@ The platform must be built and tested against three upstream systems we don't ha
 | ID | Criterion |
 |---|---|
 | S1-1 | `make mocks` starts the mock process. Each upstream answers on its documented routes. |
-| S1-2 | Case mock: mixed-case JSON as in the sample (`Status`, `Comments` alongside `openedAt`, `accountId`); paginated with an opaque `nextRecordsUrl`; every case has a monotonic `version`; upstream filters on status, priority and opened range. |
-| S1-3 | Entitlement mock serves `accounts.csv` with an export timestamp header and `entitlements.xml` with a `generatedAt` root attribute. Both send `ETag` and `Last-Modified`, and answer `304` to a matching conditional GET. |
+| S1-2 | Case mock: mixed-case JSON as in the sample (`Status`, `Comments` alongside `openedAt`, `accountId`); one page per query, with sort and keyset (`afterValue`, `afterId`) parameters; every case has a monotonic `version`; upstream filters on status, priority and opened range. |
+| S1-3 | Entitlement mock serves `accounts.csv` with an export timestamp header and `entitlements.xml` with a `generatedAt` root attribute. |
 | S1-4 | Warehouse mock accepts `POST /api/v2/statements` with `{ statement, bindings }`. It executes only allow-listed statements against SQLite and rejects anything else with 422. |
-| S1-5 | Fault injection per upstream, set by env at start-up or via `POST /__admin/faults`: `latencyMs`, `errorRate`, `forceStatus` (incl. 429 + `Retry-After`, 503), `down`. A reset endpoint restores defaults. |
+| S1-5 | Fault injection per upstream, set by env at start-up or via `POST /__admin/faults`: `latencyMs`, `forceStatus` (incl. 429 + `Retry-After`, 503), `down`. A reset endpoint restores defaults. |
 | S1-6 | The clock is injectable: `NOW` env for processes and a test clock for unit tests. Nothing reads `Date.now()` outside the clock module. |
 | S1-7 | Fixtures reproduce every quirk: mixed casing; `ACC-77` in the CSV vs `ACC-007` elsewhere (resolved only via the crosswalk); CSV/XML disagreement on renewal and on tier; one case for an account with no entitlement record (unmatched). |
 | S1-8 | Fixtures contain the matches and near-misses in §4. A test asserts the exact expected ID set for the sample question at the fixture clock. |

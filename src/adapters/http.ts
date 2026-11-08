@@ -53,7 +53,7 @@ function errorCode(text: string): string | undefined {
 
 /**
  * HTTP client for one upstream behind its resilience policy (S3 §2.3). Every
- * status other than 2xx/304 becomes an UpstreamError of the right kind;
+ * status other than 2xx becomes an UpstreamError of the right kind;
  * retries, the breaker and the request budget are applied in resilience.ts.
  */
 export function createUpstreamClient(options: UpstreamClientOptions): UpstreamClient {
@@ -96,7 +96,7 @@ export function createUpstreamClient(options: UpstreamClientOptions): UpstreamCl
     }
 
     const { status } = response;
-    if ((status >= 200 && status < 300) || status === 304) {
+    if (status >= 200 && status < 300) {
       return { status, headers: response.headers, text };
     }
     if (status === 429) {
@@ -109,7 +109,7 @@ export function createUpstreamClient(options: UpstreamClientOptions): UpstreamCl
     if (status >= 500) throw new UpstreamError(upstream, 'server_error', { status });
     if (status === 404) throw new UpstreamError(upstream, 'not_found', { status });
     const code = errorCode(text);
-    // 1xx/3xx other than 304 aren't expected from these upstreams: treat as our error.
+    // 1xx/3xx aren't expected from these upstreams: treat as our error.
     throw new UpstreamError(upstream, 'client_error', {
       status,
       ...(code === undefined ? {} : { code }),

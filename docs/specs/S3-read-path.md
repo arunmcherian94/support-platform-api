@@ -25,12 +25,12 @@ The sample question has a fixed answer (S1 §4). This spec is done when the API 
 Domain code (joins, filters, the usage trend, cursors) lives in `src/domain/`, has no I/O, and reads time only from the injected clock.
 
 ### 2.2 Entitlement snapshot (ADR-0003, as built)
-- **Loaded at start-up, then polled** every `ENTITLEMENT_REFRESH_SECONDS` (default 900) with `If-None-Match` and `If-Modified-Since`; a `304` keeps the current snapshot. Start-up does not wait for or require the first load: until it succeeds, readiness reports the snapshot `unavailable`.
+- **Loaded at start-up, then polled** every `ENTITLEMENT_REFRESH_SECONDS` (default 900) with a plain fetch; an unchanged body keeps the current snapshot. `asOf` comes only from the source's own time (`X-Export-Timestamp`, `generatedAt`); a feed without it counts as a failed refresh. Start-up does not wait for or require the first load: until it succeeds, readiness reports the snapshot `unavailable`.
 - **IDs:** crosswalk first, then the canonical format (`ACC-` + at least three digits). An ID that fits neither is logged as a data-quality event and left out.
 - **Duplicates:** the row with the latest `contract_end` wins; each duplicate is logged.
 - **Precedence per field:** tier and renewal from the XML when the feed's `generatedAt` is newer than the CSV export's time, otherwise from the CSV. Name and ARR come only from the CSV.
 - **Staleness:** the snapshot is unusable when it never loaded or the CSV export is older than 48 hours. A failed refresh keeps the last good snapshot, and the affected source reports `stale` in `sources[]`.
-- **Unmatched IDs:** XML accounts with no CSV row, and case account IDs with no entitlement record seen during reads, are logged as data-quality events, once per ID. They are not listed on `/readyz`, which needs no authentication.
+- **Unmatched IDs:** XML accounts with no CSV row, and case account IDs with no entitlement record seen during reads, are logged as data-quality events: XML-only accounts on each rebuild, case accounts once per ID (again if the ID gains a record and later loses it). They are not listed on `/readyz`, which needs no authentication.
 - **ARR stays in the snapshot.** Whether a response includes it is decided at the response boundary (§2.4), never in the snapshot.
 
 ### 2.3 Resilience (cockatiel 4.0.0, Gate 3a)

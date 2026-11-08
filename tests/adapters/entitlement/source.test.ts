@@ -28,24 +28,14 @@ function response(status: number, text: string, headers: Record<string, string>)
   return { status, text, headers: new Headers(headers) };
 }
 
-/** A feed that answers 304 to a matching If-None-Match, like the mock ERP. */
-function servedFeed(text: string, headers: Record<string, string>): Route {
-  return (request) =>
-    request.headers?.['If-None-Match'] !== undefined &&
-    request.headers['If-None-Match'] === headers.ETag
-      ? response(304, '', headers)
-      : response(200, text, headers);
-}
-
-const csvRoute = (text = CSV, etag = '"csv-v1"'): Route =>
-  servedFeed(text, {
-    ETag: etag,
-    'Last-Modified': new Date(EXPORTED_AT).toUTCString(),
-    'X-Export-Timestamp': EXPORTED_AT,
-  });
-
-const xmlRoute = (text = XML, etag = '"xml-v1"'): Route =>
-  servedFeed(text, { ETag: etag, 'Last-Modified': new Date(GENERATED_AT).toUTCString() });
+const csvRoute =
+  (text = CSV): Route =>
+  () =>
+    response(200, text, { 'X-Export-Timestamp': EXPORTED_AT });
+const xmlRoute =
+  (text = XML): Route =>
+  () =>
+    response(200, text, {});
 
 const failing =
   (kind: 'server_error' | 'timeout' = 'server_error'): Route =>
@@ -175,24 +165,17 @@ describe('createEntitlementSource: loading', () => {
   });
 });
 
-describe('createEntitlementSource: conditional polling', () => {
-  it('sends validators on the next poll and keeps the data on 304', async () => {
+describe('createEntitlementSource: polling', () => {
+  it('refetches both feeds each interval and keeps the snapshot when nothing changed', async () => {
     const h = harness();
     await h.source.start();
     const before = usable(h.source.current()).accounts;
     h.calls.length = 0;
 
     await poll();
-    const csvCall = h.calls.find((call) => call.path === CSV_PATH);
-    const xmlCall = h.calls.find((call) => call.path === XML_PATH);
-    expect(csvCall?.headers).toEqual({
-      'If-None-Match': '"csv-v1"',
-      'If-Modified-Since': new Date(EXPORTED_AT).toUTCString(),
-    });
-    expect(xmlCall?.headers?.['If-None-Match']).toBe('"xml-v1"');
-
+    expect(h.calls.map((call) => call.path).sort()).toEqual([CSV_PATH, XML_PATH]);
     const after = usable(h.source.current());
-    expect(after.accounts).toBe(before); // 304: no re-parse, no rebuild
+    expect(after.accounts).toBe(before); // same bytes: no re-parse, no rebuild
     expect(after.export).toEqual({ status: 'ok', asOf: EXPORTED_AT });
   });
 
@@ -204,7 +187,6 @@ describe('createEntitlementSource: conditional polling', () => {
         '<tier>Platinum</tier>\n    <renewal>2027-01-10',
         '<tier>Silver</tier>\n    <renewal>2027-01-10',
       ),
-      '"xml-v2"',
     );
     await poll();
     expect(usable(h.source.current()).accounts.get('ACC-042')?.supportTier).toBe('silver');
@@ -232,7 +214,7 @@ describe('createEntitlementSource: failures and staleness', () => {
     expect(snapshot.export).toEqual({ status: 'stale', asOf: EXPORTED_AT });
     expect(snapshot.accounts.get('ACC-012')?.renewalDate).toBe('2027-02-03');
 
-    // Recovery through a 304 counts as a successful refresh.
+    // Recovery with the same body counts as a successful refresh.
     h.routes[CSV_PATH] = csvRoute();
     await poll();
     expect(usable(h.source.current()).export.status).toBe('ok');
@@ -275,31 +257,40 @@ describe('createEntitlementSource: failures and staleness', () => {
 });
 
 describe('createEntitlementSource: timestamps', () => {
-  it('falls back to Last-Modified, then the fetch time, for the export time', async () => {
-    const lastModified = 'Thu, 05 Nov 2026 22:00:00 GMT';
-    const a = harness({
-      [CSV_PATH]: () => response(200, CSV, { ETag: '"a"', 'Last-Modified': lastModified }),
-    });
-    await a.source.start();
-    expect(usable(a.source.current()).export.asOf).toBe('2026-11-05T22:00:00Z');
+  it('takes asOf from the source and refuses a feed that does not say when it was produced', async () => {
+    const ok = harness();
+    await ok.source.start();
+    expect(usable(ok.source.current()).export.asOf).toBe(EXPORTED_AT);
+    expect(usable(ok.source.current()).feed.asOf).toBe(GENERATED_AT);
 
-    const b = harness({ [CSV_PATH]: () => response(200, CSV, {}) });
-    await b.source.start();
-    expect(usable(b.source.current()).export.asOf).toBe(NOW);
+    const noExportTime = harness({ [CSV_PATH]: () => response(200, CSV, {}) });
+    await noExportTime.source.start();
+    expect(noExportTime.source.current()).toEqual({ usable: false, reason: 'never_loaded' });
   });
 
-  it('falls back to Last-Modified when the feed has no generatedAt', async () => {
+  it('refuses an XML feed without generatedAt; the export alone still serves', async () => {
     const { source } = harness({
-      [XML_PATH]: () =>
-        response(200, XML.replace(` generatedAt="${GENERATED_AT}"`, ''), {
-          'Last-Modified': 'Fri, 06 Nov 2026 01:00:00 GMT',
-        }),
+      [XML_PATH]: xmlRoute(XML.replace(` generatedAt="${GENERATED_AT}"`, '')),
     });
     await source.start();
-    const snapshot = usable(source.current());
-    expect(snapshot.feed.asOf).toBe('2026-11-06T01:00:00Z');
-    // Now older than the export: the export wins.
-    expect(snapshot.accounts.get('ACC-042')?.tierSource).toBe('entitlement_export');
+    expect(usable(source.current()).feed).toEqual({ status: 'unavailable', asOf: null });
+  });
+
+  it('a loaded export that loses its time header goes stale and keeps its asOf', async () => {
+    const h = harness();
+    await h.source.start();
+    h.routes[CSV_PATH] = () => response(200, CSV, {});
+    await poll();
+    expect(usable(h.source.current()).export).toEqual({ status: 'stale', asOf: EXPORTED_AT });
+  });
+
+  it('a newer export time with identical rows advances asOf', async () => {
+    const h = harness();
+    await h.source.start();
+    const newer = '2026-11-06T10:00:00Z';
+    h.routes[CSV_PATH] = () => response(200, CSV, { 'X-Export-Timestamp': newer });
+    await poll();
+    expect(usable(h.source.current()).export).toEqual({ status: 'ok', asOf: newer });
   });
 });
 
@@ -312,6 +303,23 @@ describe('createEntitlementSource: unmatched IDs and data-quality logs', () => {
     source.reportUnmatched('ACC-007'); // has a record: not unmatched
     const unmatched = logs().filter((line) => line.kind === 'unmatched_account');
     expect(unmatched.map((line) => line.accountId)).toEqual(['ACC-099']);
+  });
+
+  it('logs an ID again if it gains a record and later loses it', async () => {
+    const h = harness();
+    await h.source.start();
+    const count = () =>
+      h.logs().filter((line) => line.kind === 'unmatched_account' && line.accountId === 'ACC-099')
+        .length;
+    h.source.reportUnmatched('ACC-099');
+    const withRow = `${CSV}ACC-099,Late Corp,Gold,2027-03-01,1000\n`;
+    h.routes[CSV_PATH] = csvRoute(withRow);
+    await poll();
+    h.source.reportUnmatched('ACC-099'); // has a record now: not logged
+    h.routes[CSV_PATH] = csvRoute();
+    await poll();
+    h.source.reportUnmatched('ACC-099');
+    expect(count()).toBe(2);
   });
 
   it('logs data-quality events with account IDs but never names or ARR', async () => {
