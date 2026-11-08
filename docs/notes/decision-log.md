@@ -90,8 +90,8 @@ Built = implemented and tested; Documented = deferred with a plan under "Skipped
 | C10 | Demo: an LLM answers the sample question | `mcp/demo/`, transcripts | Built |
 | C11 | One real failure and its fix | `mcp/demo/README.md` | Built |
 | D1–D8 | Platform write-up | `PLATFORM.md` (spec S6) | Written |
-| X1 | All deliverables at their paths | repo root | Part D (README) |
-| X2 | README gets a reviewer running in under 5 minutes | `README.md` | Part D |
+| X1 | All deliverables at their paths | repo root, mapped in `README.md` | Built |
+| X2 | README gets a reviewer running in under 5 minutes | `README.md` | Built (fresh clone to first answer: 8 s with a warm npm cache) |
 
 ## Data quirks and how they're handled
 - **Mixed casing in case JSON** (`Status`, `Comments` vs `openedAt`): normalised to canonical camelCase in the case adapter; upstream shapes never leave the adapter.

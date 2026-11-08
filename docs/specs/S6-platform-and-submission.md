@@ -1,6 +1,6 @@
 # S6: Platform write-up and submission
 
-- **Status:** Draft (to be approved before Part D starts).
+- **Status:** Implemented (PLATFORM.md and README.md).
 - **Traceability:** D1 to D8, G1, G2, X1, X2 (`docs/notes/decision-log.md`, "Requirements traceability").
 
 ## 1. Deliverables
