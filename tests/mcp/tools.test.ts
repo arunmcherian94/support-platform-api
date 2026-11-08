@@ -85,7 +85,7 @@ describe('search_cases (S5-4)', () => {
     h = harness;
     const { tools } = await harness.client.listTools();
     const description = tools.find((t) => t.name === 'search_cases')?.description ?? '';
-    expect(description).toContain('leave status out to get every case that is not closed');
+    expect(description).toMatch(/status out.*not closed/i);
     const filters = {
       priority: ['P1'],
       tier: 'platinum',
@@ -102,6 +102,11 @@ describe('search_cases (S5-4)', () => {
         .map((c) => c.caseId)
         .sort();
     expect(await ids({})).toEqual(['CS-10231', 'CS-10233', 'CS-10236', 'CS-10239', 'CS-10240']);
+    // The audit row records the states actually searched, and that they were the default.
+    expect(JSON.parse(auditRows(harness.db).at(-1)?.args_redacted ?? '{}')).toMatchObject({
+      status: ['open', 'in_progress'],
+      statusDefaulted: true,
+    });
     // The live demo's filter: the in_progress P1 drops out.
     expect(await ids({ status: ['open'] })).not.toContain('CS-10233');
     // The closed P1 near-miss (CS-10235) only when closed cases are asked for.

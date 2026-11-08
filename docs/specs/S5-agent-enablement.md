@@ -67,7 +67,7 @@ The contract already specifies it; this section fixes how it's built.
 
 | Tool | Annotations | Inputs | Output (compact) |
 |---|---|---|---|
-| `search_cases` | read-only | `status[]`, `priority[]` and `tier` as enums; `minOpenHours` (0–8760); `renewalWithinDays` (0–365); `accountId` (pattern); `limit` (1–20, default 10); `cursor` | rows: `caseId`, `subject` (untrusted), `priority`, `status`, `openHours`, `account {id, name, tier, renewalDate}`; plus `nextCursor` and `degraded` |
+| `search_cases` | read-only | `status[]` (omitted: every state except `closed`; REST applies no filter), `priority[]` and `tier` as enums; `minOpenHours` (0–8760); `renewalWithinDays` (0–365); `accountId` (pattern); `limit` (1–20, default 10); `cursor` | rows: `caseId`, `subject` (untrusted), `priority`, `status`, `openHours`, `account {id, name, tier, renewalDate}`; plus `nextCursor` and `degraded` |
 | `get_customer_summary` | read-only | `customerId` (pattern) | name, tier, entitlement summary, usage summary, `arr` only if the API returned it, degraded sources |
 | `get_case` | read-only | `caseId` (pattern) | the case row plus the latest 5 comments (author, time, body marked untrusted), `escalation` |
 | `add_case_comment` | write, not destructive, idempotent | `caseId`, `body` (1–1000 characters) | the comment as created (ID, author, time, body), echoed back |

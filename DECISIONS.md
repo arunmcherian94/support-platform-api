@@ -88,7 +88,7 @@ REST serves many consumers with stable, general resources. A tool serves one mod
 
 | REST | Tool | What changes, and why |
 |---|---|---|
-| `GET /v1/cases?openedBefore=…&accountTier=…&renewalWithinDays=…` | `search_cases` | `minOpenHours` instead of a timestamp: the model needs no clock. Rows carry only what the question needs (ID, subject, priority, status, hours open, account name, tier, renewal date). At most 20 rows; the tool's own cursor |
+| `GET /v1/cases?openedBefore=…&accountTier=…&renewalWithinDays=…` | `search_cases` | `minOpenHours` instead of a timestamp: the model needs no clock. Rows carry only what the question needs (ID, subject, priority, status, hours open, account name, tier, renewal date). At most 20 rows; the tool's own cursor. Leaving `status` out means every state except closed (REST applies no status filter), because "open" in a question means not closed |
 | `GET /v1/customers/{id}` | `get_customer_summary` | Tier, entitlements, latest usage and trend, and which sources are degraded; no provenance envelope. `arr` only when the API returns it |
 | `GET /v1/cases/{id}` | `get_case` | The latest 5 comments, each as untrusted text with flags; the `ETag` is never shown to the model |
 | `POST /v1/cases/{id}/comments` + `Idempotency-Key` | `add_case_comment` | The server derives the key from (user, case, body), so a model's retry can't post twice; the comment is echoed back; sensitive content refused |

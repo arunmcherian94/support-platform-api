@@ -439,7 +439,8 @@ export function createMcpServer(deps: ToolDeps): McpServer {
             ? undefined
             : isoSeconds(new Date(now.getTime() - input.minOpenHours * 3_600_000));
       notes.args = {
-        ...(input.status === undefined ? {} : { status: input.status }),
+        status: input.status ?? NOT_CLOSED,
+        ...(input.status === undefined ? { statusDefaulted: true } : {}),
         ...(input.priority === undefined ? {} : { priority: input.priority }),
         ...(input.tier === undefined ? {} : { tier: input.tier }),
         ...(input.minOpenHours === undefined ? {} : { minOpenHours: input.minOpenHours }),
@@ -753,8 +754,9 @@ export function createMcpServer(deps: ToolDeps): McpServer {
             ...(action.args.note === undefined ? {} : { note: action.args.note }),
           },
           message:
-            'Not escalated yet. A human must approve this proposal outside the conversation. ' +
-            'Tell the user it is waiting for approval and give the pendingActionId.',
+            'Not escalated yet. A human must approve or reject this proposal outside the ' +
+            'conversation. Tell the user it needs a human decision, give the pendingActionId, ' +
+            'and do not call escalate_case again for it.',
         },
       };
     }),

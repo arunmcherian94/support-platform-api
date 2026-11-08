@@ -109,3 +109,4 @@ Each row: the rule broken on purpose, and the test that failed. Reverted after e
 | Stamp pending-action expiry with the fixture clock | `tests/mcp/tools.test.ts` (wall clock, not the anchored clock) | 18 review |
 | Leave an approval stuck when the API is unreachable | `tests/mcp/approval.test.ts` (marked failed and audited) | 18 review |
 | Match a repeated proposal by case only | `tests/mcp/approval.test.ts` (another user's proposal never returned) | 18 review |
+| Drop the not-closed default in `search_cases` | `tests/mcp/tools.test.ts` (closed CS-10235 appears) | 19 |
