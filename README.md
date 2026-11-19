@@ -67,5 +67,5 @@ Restart `make run` to reset state (escalations and comments are held by the mock
 | `postman/` | Collection and local environment |
 | `scripts/` | `run.ts` (starts everything) and `approve.ts` (human approval of an escalation) |
 | `config/` | Dev-only clients for the local token issuer |
-| `docs/` | `specs/` (what was built, with acceptance criteria), `adr/` (key decisions), `notes/` (full decision log, journal, AI mistake log, spend log), `review-checklist.md` |
+| `docs/` | `specs/` (what was built, with acceptance criteria), `adr/` (key decisions), `notes/` (full decision log, journal, AI mistake log, spend log), `review-checklist.md`, `api-best-practices.md` (quick reference to the practices applied here) |
 | `.claude/` | The AI tooling used to build this: a fresh-context reviewer agent and the build skill |
